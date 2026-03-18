@@ -1,0 +1,186 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打卡记录 - 校园打卡平台</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .history-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .history-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .history-item:hover {
+            background: #f8fafc;
+        }
+        .history-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-right: 1rem;
+            flex-shrink: 0;
+            font-size: 1.25rem;
+        }
+        .history-info {
+            flex: 1;
+        }
+        .history-title {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.25rem;
+            font-size: 1rem;
+        }
+        .history-meta {
+            font-size: 0.875rem;
+            color: var(--text-light);
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .history-points {
+            color: #16a34a;
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-light);
+        }
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .filter-tab {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f1f5f9;
+            color: var(--text-light);
+            text-decoration: none;
+        }
+        .filter-tab.active {
+            background: var(--primary);
+            color: white;
+        }
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .summary-item {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            text-align: center;
+        }
+        .summary-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .summary-label {
+            font-size: 0.875rem;
+            color: var(--text-light);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">校园打卡</a>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/activities/" class="nav-link">🎯 活动广场</a>
+                <a href="/moments/" class="nav-link">💬 动态</a>
+                <a href="/users/profile/" class="nav-link active">👤 个人中心</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container" style="max-width: 900px;">
+        <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h1 style="font-size: 1.5rem;">📋 打卡记录</h1>
+                <a href="/activities/" class="btn btn-secondary btn-sm">去打卡</a>
+            </div>
+            <div class="card-body">
+                <!-- 统计摘要 -->
+                <div class="stats-summary">
+                    <div class="summary-item">
+                        <div class="summary-number">{{ total_checkins|default:"0" }}</div>
+                        <div class="summary-label">累计打卡</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number">{{ this_month|default:"0" }}</div>
+                        <div class="summary-label">本月打卡</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number">{{ total_points|default:"0" }}</div>
+                        <div class="summary-label">获得积分</div>
+                    </div>
+                </div>
+
+                <!-- 筛选标签 -->
+                <div class="filter-tabs">
+                    <a href="?filter=all" class="filter-tab {% if current_filter == 'all' %}active{% endif %}">全部</a>
+                    <a href="?filter=month" class="filter-tab {% if current_filter == 'month' %}active{% endif %}">本月</a>
+                    <a href="?filter=week" class="filter-tab {% if current_filter == 'week' %}active{% endif %}">本周</a>
+                </div>
+
+                {% if checkins %}
+                <div class="history-list">
+                    {% for checkin in checkins %}
+                    <div class="history-item">
+                        <div class="history-icon">✓</div>
+                        <div class="history-info">
+                            <div class="history-title">{{ checkin.activity.title }}</div>
+                            <div class="history-meta">
+                                <span>📍 {{ checkin.activity.location }}</span>
+                                <span>📅 {{ checkin.created_at|date:"Y-m-d H:i" }}</span>
+                                {% if checkin.is_continuous %}
+                                <span style="color: #f59e0b;">🔥 连续打卡</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="history-points">+{{ checkin.points }} 分</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <div style="font-size: 4rem; margin-bottom: 1rem;">📝</div>
+                    <h3>暂无打卡记录</h3>
+                    <p>快去参与活动打卡吧！</p>
+                    <a href="/activities/" class="btn btn-primary" style="margin-top: 1rem;">浏览活动</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="/users/profile/" class="back-link">← 返回个人中心</a>
+        </div>
+    </div>
+</body>
+</html>

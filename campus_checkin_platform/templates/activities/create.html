@@ -1,0 +1,177 @@
+{% extends 'base.html' %}
+
+{% block title %}创建活动 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="glass-card">
+            <div class="text-center mb-4">
+                <i class="fas fa-plus-circle fa-3x text-primary mb-3"></i>
+                <h2>创建新活动</h2>
+                <p class="text-muted">发起一个精彩的活动，邀请同学们一起参与</p>
+            </div>
+            
+            <!-- 显示表单错误 -->
+            {% if form.errors %}
+            <div class="alert alert-danger">
+                <h5>请修正以下错误：</h5>
+                <ul class="mb-0">
+                    {% for field in form %}
+                        {% for error in field.errors %}
+                        <li>{{ field.label }}: {{ error }}</li>
+                        {% endfor %}
+                    {% endfor %}
+                    {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                
+                <!-- 活动标题和分类 -->
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">活动标题 *</label>
+                        {{ form.title }}
+                        {% if form.title.errors %}
+                        <div class="text-danger small">{{ form.title.errors }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">活动分类 *</label>
+                        {{ form.category }}
+                        {% if form.category.errors %}
+                        <div class="text-danger small">{{ form.category.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- 活动描述 -->
+                <div class="mb-3">
+                    <label class="form-label">活动描述 *</label>
+                    {{ form.description }}
+                    {% if form.description.errors %}
+                    <div class="text-danger small">{{ form.description.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <!-- 开始时间和结束时间 -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">开始时间 *</label>
+                        {{ form.start_time }}
+                        {% if form.start_time.errors %}
+                        <div class="text-danger small">{{ form.start_time.errors }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">结束时间 *</label>
+                        {{ form.end_time }}
+                        {% if form.end_time.errors %}
+                        <div class="text-danger small">{{ form.end_time.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- 报名截止时间 -->
+                <div class="mb-3">
+                    <label class="form-label">报名截止时间</label>
+                    {{ form.registration_deadline }}
+                    <div class="form-text text-muted">不填则默认为活动开始时间</div>
+                </div>
+                
+                <!-- 活动地点 -->
+                <div class="mb-3">
+                    <label class="form-label">活动地点 *</label>
+                    {{ form.location }}
+                    {% if form.location.errors %}
+                    <div class="text-danger small">{{ form.location.errors }}</div>
+                    {% endif %}
+                </div>
+                
+                <!-- 经纬度（可选） -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">纬度（可选）</label>
+                        {{ form.location_lat }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">经度（可选）</label>
+                        {{ form.location_lng }}
+                    </div>
+                </div>
+                
+                <!-- 最小参与人数和最大参与人数 -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">最小参与人数 *</label>
+                        {{ form.min_participants }}
+                        {% if form.min_participants.errors %}
+                        <div class="text-danger small">{{ form.min_participants.errors }}</div>
+                        {% endif %}
+                        <div class="form-text text-muted">活动最少需要几人参与</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">最大参与人数 *</label>
+                        {{ form.max_participants }}
+                        {% if form.max_participants.errors %}
+                        <div class="text-danger small">{{ form.max_participants.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- 积分奖励和打卡范围 -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">积分奖励 *</label>
+                        {{ form.points }}
+                        {% if form.points.errors %}
+                        <div class="text-danger small">{{ form.points.errors }}</div>
+                        {% endif %}
+                        <div class="form-text text-muted">完成活动获得的积分</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">打卡范围(米) *</label>
+                        {{ form.checkin_radius }}
+                        {% if form.checkin_radius.errors %}
+                        <div class="text-danger small">{{ form.checkin_radius.errors }}</div>
+                        {% endif %}
+                        <div class="form-text text-muted">距离活动地点多少米内可以打卡</div>
+                    </div>
+                </div>
+                
+                <!-- 参与要求 -->
+                <div class="mb-3">
+                    <label class="form-label">参与要求</label>
+                    {{ form.requirements }}
+                </div>
+                
+                <!-- 允许开始前打卡 -->
+                <div class="mb-3 form-check">
+                    {{ form.allow_checkin_before_start }}
+                    <label class="form-check-label">允许活动开始前打卡</label>
+                </div>
+                
+                <!-- 封面图片 -->
+                <div class="mb-3">
+                    <label class="form-label">封面图片</label>
+                    {{ form.cover_image }}
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check me-2"></i>创建活动
+                    </button>
+                    <a href="{% url 'activities:list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-2"></i>取消
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}活动广场 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<!-- 搜索和筛选 -->
+<div class="glass-card mb-4">
+    <form method="get" class="row g-3">
+        <div class="col-md-4">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input type="text" name="q" class="form-control" placeholder="搜索活动..." 
+                       value="{{ request.GET.q|default:'' }}">
+            </div>
+        </div>
+        <div class="col-md-3">
+            <select name="category" class="form-select">
+                <option value="">所有分类</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if request.GET.category == cat.id|stringformat:'s' %}selected{% endif %}>
+                    {{ cat.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="status" class="form-select">
+                <option value="">所有状态</option>
+                <option value="upcoming" {% if request.GET.status == 'upcoming' %}selected{% endif %}>即将开始</option>
+                <option value="ongoing" {% if request.GET.status == 'ongoing' %}selected{% endif %}>进行中</option>
+                <option value="ended" {% if request.GET.status == 'ended' %}selected{% endif %}>已结束</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">
+                <i class="fas fa-filter me-1"></i>筛选
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- 活动列表 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-calendar-alt text-primary me-2"></i>活动广场</h2>
+    <a href="{% url 'activities:create' %}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>创建活动
+    </a>
+</div>
+
+<div class="row">
+    {% for activity in activities %}
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="position-relative">
+                <img src="{% if activity.cover_image %}{{ activity.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}" 
+                     class="card-img-top" alt="{{ activity.title }}" style="height: 180px; object-fit: cover;">
+                <div class="position-absolute top-0 start-0 m-2">
+                    {% if activity.status == 'upcoming' %}
+                    <span class="badge bg-info">即将开始</span>
+                    {% elif activity.status == 'ongoing' %}
+                    <span class="badge bg-success">进行中</span>
+                    {% elif activity.status == 'ended' %}
+                    <span class="badge bg-secondary">已结束</span>
+                    {% endif %}
+                </div>
+                <div class="position-absolute top-0 end-0 m-2">
+                    <span class="badge bg-warning text-dark">
+                        <i class="fas fa-coins me-1"></i>+{{ activity.points }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <span class="badge" style="background-color: {{ activity.category.color|default:'#3B82F6' }}">
+                        {{ activity.category.name|default:'其他' }}
+                    </span>
+                </div>
+                <h5 class="card-title">{{ activity.title }}</h5>
+                <p class="card-text text-muted small">{{ activity.description|truncatechars:80 }}</p>
+                <div class="mb-2">
+                    <small class="text-muted d-block">
+                        <i class="fas fa-map-marker-alt me-1 text-danger"></i>{{ activity.location }}
+                    </small>
+                    <small class="text-muted d-block">
+                        <i class="fas fa-calendar me-1 text-primary"></i>{{ activity.start_time|date:"Y-m-d H:i" }}
+                    </small>
+                </div>
+                <div class="progress mb-2" style="height: 5px;">
+                    <div class="progress-bar" role="progressbar" 
+                         style="width: {{ activity.registration_percentage }}%"></div>
+                </div>
+                <small class="text-muted">
+                    <i class="fas fa-users me-1"></i>
+                    {{ activity.participants.count }}/{{ activity.max_participants }} 人已报名
+                </small>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="d-flex gap-2">
+                    <a href="{% url 'activities:detail' activity.id %}" class="btn btn-primary btn-sm flex-grow-1">
+                        查看详情
+                    </a>
+                    {% if user.is_authenticated %}
+                        {% if activity.is_registered %}
+                        <button class="btn btn-secondary btn-sm" disabled>已报名</button>
+                        {% elif activity.is_full %}
+                        <button class="btn btn-danger btn-sm" disabled>已满员</button>
+                        {% elif activity.status == 'ended' %}
+                        <button class="btn btn-secondary btn-sm" disabled>已结束</button>
+                        {% else %}
+                        <button class="btn btn-success btn-sm" onclick="joinActivity({{ activity.id }})">
+                            报名
+                        </button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12 text-center py-5">
+        <i class="fas fa-search fa-4x text-muted mb-3"></i>
+        <h4>没有找到相关活动</h4>
+        <p class="text-muted">换个搜索条件试试，或者创建一个新活动</p>
+        <a href="{% url 'activities:create' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>创建活动
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- 分页 -->
+{% if activities.has_other_pages %}
+<nav aria-label="Page navigation" class="mt-4">
+    <ul class="pagination justify-content-center">
+        {% if activities.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ activities.previous_page_number }}{{ query_params }}">上一页</a>
+        </li>
+        {% endif %}
+        
+        {% for num in activities.paginator.page_range %}
+            {% if activities.number == num %}
+            <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > activities.number|add:'-3' and num < activities.number|add:'3' %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ num }}{{ query_params }}">{{ num }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if activities.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ activities.next_page_number }}{{ query_params }}">下一页</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function joinActivity(activityId) {
+    if (!confirm('确定要报名此活动吗？')) return;
+    
+    fetch(`/activities/${activityId}/join/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('报名成功！');
+            location.reload();
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('报名失败，请重试');
+    });
+}
+</script>
+{% endblock %}

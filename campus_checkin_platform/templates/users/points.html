@@ -1,0 +1,218 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的积分 - 校园打卡平台</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .points-hero {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 3rem 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .points-hero::before {
+            content: "🪙";
+            position: absolute;
+            font-size: 12rem;
+            opacity: 0.1;
+            top: -3rem;
+            right: -2rem;
+        }
+        .points-number {
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1;
+            margin: 1rem 0;
+            position: relative;
+            z-index: 1;
+        }
+        .points-label {
+            font-size: 1.125rem;
+            opacity: 0.95;
+        }
+        .level-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+        .points-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        .history-info h4 {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .history-info p {
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+        .points-change {
+            font-weight: 700;
+            font-size: 1.125rem;
+        }
+        .points-change.positive {
+            color: #16a34a;
+        }
+        .points-change.negative {
+            color: #dc2626;
+        }
+        .rule-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px dashed var(--border);
+        }
+        .rule-item:last-child {
+            border-bottom: none;
+        }
+        .rule-reward {
+            color: #16a34a;
+            font-weight: 600;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: white;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">校园打卡</a>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/activities/" class="nav-link">🎯 活动广场</a>
+                <a href="/moments/" class="nav-link">💬 动态</a>
+                <a href="/users/profile/" class="nav-link active">👤 个人中心</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container" style="max-width: 800px;">
+        <!-- 积分总览 -->
+        <div class="points-hero">
+            <div class="level-badge">🏆 {{ user.level|default:"Lv.1 新手" }}</div>
+            <div class="points-number">{{ user.points|default:"0" }}</div>
+            <div class="points-label">当前积分</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ progress_percent|default:"30" }}%;"></div>
+            </div>
+            <div style="font-size: 0.875rem; margin-top: 0.5rem; opacity: 0.9;">
+                再获得 {{ next_level_points|default:"70" }} 分可升级到 {{ next_level|default:"Lv.2 活跃者" }}
+            </div>
+            <div class="points-actions">
+                <a href="/activities/" class="btn btn-secondary" style="background: white; color: var(--primary);">赚取积分</a>
+                <a href="/rewards/" class="btn" style="background: rgba(255,255,255,0.2); color: white;">兑换奖励</a>
+            </div>
+        </div>
+
+        <!-- 积分明细 -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="font-size: 1.25rem;">📊 积分明细</h2>
+                <a href="?filter=all" style="font-size: 0.875rem; color: var(--primary);">查看全部</a>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                {% if point_history %}
+                    {% for record in point_history %}
+                    <div class="history-item">
+                        <div class="history-info">
+                            <h4>{{ record.description }}</h4>
+                            <p>{{ record.created_at|date:"Y-m-d H:i" }}</p>
+                        </div>
+                        <div class="points-change {% if record.amount > 0 %}positive{% else %}negative{% endif %}">
+                            {% if record.amount > 0 %}+{% endif %}{{ record.amount }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="text-align: center; padding: 3rem; color: var(--text-light);">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+                        <p>暂无积分记录</p>
+                        <p style="font-size: 0.875rem; margin-top: 0.5rem;">快去参与活动赚取积分吧！</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 积分规则 -->
+        <div class="card">
+            <div class="card-header" style="background: #f8fafc; color: var(--text);">
+                <h3 style="font-size: 1.125rem;">💡 积分获取规则</h3>
+            </div>
+            <div class="card-body">
+                <div class="rule-item">
+                    <span>每日打卡</span>
+                    <span class="rule-reward">+10 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>连续打卡3天</span>
+                    <span class="rule-reward">+20 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>连续打卡7天</span>
+                    <span class="rule-reward">+50 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>连续打卡30天</span>
+                    <span class="rule-reward">+200 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>创建活动</span>
+                    <span class="rule-reward">+20 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>参与活动</span>
+                    <span class="rule-reward">+5 积分</span>
+                </div>
+                <div class="rule-item">
+                    <span>发布动态</span>
+                    <span class="rule-reward">+3 积分</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="/users/profile/" class="back-link">← 返回个人中心</a>
+        </div>
+    </div>
+</body>
+</html>

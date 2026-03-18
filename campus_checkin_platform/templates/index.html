@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}首页 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<!-- Hero区域 -->
+<div class="glass-card mb-4">
+    <div class="row align-items-center">
+        <div class="col-lg-8">
+            <h1 class="display-4 fw-bold mb-3" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                发现精彩校园生活
+            </h1>
+            <p class="lead text-muted mb-4">
+                参与兴趣活动，记录美好时光，结识志同道合的朋友，让每一天都充满意义
+            </p>
+            {% if user.is_authenticated %}
+            <div class="d-flex gap-3">
+                <a href="{% url 'activities:list' %}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-compass me-2"></i>探索活动
+                </a>
+                <a href="{% url 'checkins:checkin' %}" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-camera me-2"></i>立即打卡
+                </a>
+            </div>
+            {% else %}
+            <div class="d-flex gap-3">
+                <a href="{% url 'users:register' %}" class="btn btn-primary btn-lg">
+                    <i class="fas fa-user-plus me-2"></i>立即加入
+                </a>
+                <a href="{% url 'activities:list' %}" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-eye me-2"></i>先睹为快
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="col-lg-4 text-center d-none d-lg-block">
+            <i class="fas fa-graduation-cap" style="font-size: 150px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></i>
+        </div>
+    </div>
+</div>
+
+{% if user.is_authenticated %}
+<!-- 用户统计卡片 -->
+<div class="row mb-4">
+    <!-- 累计打卡 -->
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'users:checkin_history' %}" class="card h-100 text-decoration-none">
+            <div class="card-body text-center">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <h3 class="fw-bold text-dark">{{ user.total_checkins|default:0 }}</h3>
+                <p class="text-muted mb-0">累计打卡</p>
+            </div>
+        </a>
+    </div>
+    
+    <!-- 当前积分 -->
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'users:points' %}" class="card h-100 text-decoration-none">
+            <div class="card-body text-center">
+                <i class="fas fa-coins fa-3x text-warning mb-3"></i>
+                <h3 class="fw-bold text-dark">{{ user.points|default:0 }}</h3>
+                <p class="text-muted mb-0">当前积分</p>
+            </div>
+        </a>
+    </div>
+    
+    <!-- 参与活动 -->
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'activities:my' %}?type=joined" class="card h-100 text-decoration-none">
+            <div class="card-body text-center">
+                <i class="fas fa-calendar-check fa-3x text-primary mb-3"></i>
+                <h3 class="fw-bold text-dark">{{ user.activity_registrations.count|default:0 }}</h3>
+                <p class="text-muted mb-0">参与活动</p>
+            </div>
+        </a>
+    </div>
+    
+    <!-- 连续打卡 -->
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'users:checkin_streak' %}" class="card h-100 text-decoration-none">
+            <div class="card-body text-center">
+                <i class="fas fa-fire fa-3x text-danger mb-3"></i>
+                <h3 class="fw-bold text-dark">{{ streak_days|default:0 }}</h3>
+                <p class="text-muted mb-0">连续打卡</p>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- 快捷操作 -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'activities:create' %}" class="card text-decoration-none h-100">
+            <div class="card-body text-center">
+                <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                    <i class="fas fa-plus fa-2x text-primary"></i>
+                </div>
+                <h5 class="card-title">创建活动</h5>
+                <p class="card-text text-muted small">发起新活动</p>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'checkins:checkin' %}" class="card text-decoration-none h-100">
+            <div class="card-body text-center">
+                <div class="bg-success bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                    <i class="fas fa-camera fa-2x text-success"></i>
+                </div>
+                <h5 class="card-title">快速打卡</h5>
+                <p class="card-text text-muted small">记录精彩瞬间</p>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'social:moments' %}" class="card text-decoration-none h-100">
+            <div class="card-body text-center">
+                <div class="bg-info bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                    <i class="fas fa-comment fa-2x text-info"></i>
+                </div>
+                <h5 class="card-title">发布动态</h5>
+                <p class="card-text text-muted small">分享生活点滴</p>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3 mb-3">
+        <a href="{% url 'dashboard:statistics' %}" class="card text-decoration-none h-100">
+            <div class="card-body text-center">
+                <div class="bg-warning bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                    <i class="fas fa-chart-pie fa-2x text-warning"></i>
+                </div>
+                <h5 class="card-title">数据报表</h5>
+                <p class="card-text text-muted small">查看统计分析</p>
+            </div>
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- 热门活动 -->
+<div class="glass-card mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0"><i class="fas fa-fire text-danger me-2"></i>热门活动</h2>
+        <a href="{% url 'activities:list' %}" class="btn btn-outline-primary">
+            查看更多 <i class="fas fa-arrow-right ms-1"></i>
+        </a>
+    </div>
+    
+    <div class="row">
+        {% for activity in hot_activities|slice:":6" %}
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <img src="{% if activity.cover_image %}{{ activity.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}" 
+                     class="card-img-top" alt="{{ activity.title }}" style="height: 180px; object-fit: cover;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="badge" style="background-color: {{ activity.category.color|default:'#3B82F6' }}">
+                            {{ activity.category.name|default:'其他' }}
+                        </span>
+                        <span class="badge bg-warning text-dark">
+                            <i class="fas fa-coins me-1"></i>+{{ activity.points }}
+                        </span>
+                    </div>
+                    <h5 class="card-title">{{ activity.title }}</h5>
+                    <p class="card-text text-muted small">{{ activity.description|truncatechars:60 }}</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">
+                            <i class="fas fa-users me-1"></i>{{ activity.participants.count }}/{{ activity.max_participants }}
+                        </small>
+                        <small class="text-muted">{{ activity.start_time|date:"m月d日" }}</small>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <a href="{% url 'activities:detail' activity.id %}" class="btn btn-primary btn-sm w-100">
+                        查看详情
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+            <p class="text-muted">暂无热门活动，快来创建一个吧！</p>
+            <a href="{% url 'activities:create' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>创建活动
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- 最新动态和排行榜 -->
+<div class="row">
+    <!-- 最新动态 -->
+    <div class="col-lg-8 mb-4">
+        <div class="glass-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0"><i class="fas fa-stream text-primary me-2"></i>最新动态</h2>
+                <a href="{% url 'social:moments' %}" class="btn btn-outline-primary btn-sm">
+                    查看全部 <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+            
+            <div class="list-group list-group-flush">
+                {% for moment in latest_moments|slice:":5" %}
+                <div class="list-group-item bg-transparent px-0">
+                    <div class="d-flex">
+                        <img src="{% if moment.user.avatar %}{{ moment.user.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}" 
+                             class="avatar me-3" alt="{{ moment.user.username }}">
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <h6 class="mb-1">{{ moment.user.username }}</h6>
+                                <small class="text-muted">{{ moment.created_at|timesince }}前</small>
+                            </div>
+                            <p class="mb-1">{{ moment.content|truncatechars:100 }}</p>
+                            {% if moment.activity %}
+                            <small class="text-primary">
+                                <i class="fas fa-tag me-1"></i>{{ moment.activity.title }}
+                            </small>
+                            {% endif %}
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-danger" onclick="likeMoment({{ moment.id }})">
+                                    <i class="far fa-heart me-1"></i>{{ moment.likes.count }}
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary ms-2">
+                                    <i class="far fa-comment me-1"></i>{{ moment.comments.count }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-5">
+                    <i class="fas fa-comment-slash fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">暂无动态，快来发布第一条吧！</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- 积分排行榜 -->
+    <div class="col-lg-4 mb-4">
+        <div class="glass-card h-100">
+            <h2 class="mb-4"><i class="fas fa-trophy text-warning me-2"></i>积分排行榜</h2>
+            
+            <div class="list-group list-group-flush">
+                {% for top_user in top_users|slice:":10" %}
+                <div class="list-group-item bg-transparent px-0 d-flex align-items-center">
+                    <div class="me-3">
+                        {% if forloop.counter == 1 %}
+                        <i class="fas fa-medal fa-lg text-warning"></i>
+                        {% elif forloop.counter == 2 %}
+                        <i class="fas fa-medal fa-lg text-secondary"></i>
+                        {% elif forloop.counter == 3 %}
+                        <i class="fas fa-medal fa-lg" style="color: #CD7F32;"></i>
+                        {% else %}
+                        <span class="badge bg-light text-dark">{{ forloop.counter }}</span>
+                        {% endif %}
+                    </div>
+                    <img src="{% if top_user.avatar %}{{ top_user.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}" 
+                         class="avatar me-3" alt="{{ top_user.username }}">
+                    <div class="flex-grow-1">
+                        <h6 class="mb-0">{{ top_user.username }}</h6>
+                        <small class="text-muted">{{ top_user.department|default:'' }}</small>
+                    </div>
+                    <span class="badge bg-warning text-dark">
+                        {{ top_user.points }}分
+                    </span>
+                </div>
+                {% empty %}
+                <div class="text-center py-5">
+                    <p class="text-muted">暂无排行数据</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function likeMoment(momentId) {
+    fetch(`/social/moments/${momentId}/like/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+</script>
+{% endblock %}

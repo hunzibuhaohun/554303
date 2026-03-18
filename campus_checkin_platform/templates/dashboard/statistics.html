@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block title %}数据中心 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<div class="glass-card mb-4">
+    <h2><i class="fas fa-chart-bar text-primary me-2"></i>数据中心</h2>
+    <p class="text-muted">实时查看平台数据统计</p>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">总用户数</h6>
+                        <h3 class="mb-0">{{ user_stats.total_users }}</h3>
+                    </div>
+                    <i class="fas fa-users fa-3x opacity-50"></i>
+                </div>
+                <small>今日新增: {{ user_stats.new_users_today }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">总活动数</h6>
+                        <h3 class="mb-0">{{ activity_stats.total_activities }}</h3>
+                    </div>
+                    <i class="fas fa-calendar-alt fa-3x opacity-50"></i>
+                </div>
+                <small>进行中: {{ activity_stats.ongoing_activities }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">总打卡数</h6>
+                        <h3 class="mb-0">{{ checkin_stats.total_checkins }}</h3>
+                    </div>
+                    <i class="fas fa-check-circle fa-3x opacity-50"></i>
+                </div>
+                <small>今日: {{ checkin_stats.checkins_today }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">总积分</h6>
+                        <h3 class="mb-0">{{ checkin_stats.total_points }}</h3>
+                    </div>
+                    <i class="fas fa-coins fa-3x opacity-50"></i>
+                </div>
+                <small>累计发放</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+        <div class="glass-card h-100">
+            <h5 class="mb-3">近7天打卡趋势</h5>
+            <canvas id="checkinChart"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="glass-card h-100">
+            <h5 class="mb-3">活动分类分布</h5>
+            <canvas id="categoryChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- 排行榜 -->
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="glass-card">
+            <h5 class="mb-3"><i class="fas fa-trophy text-warning me-2"></i>积分排行榜</h5>
+            <div class="list-group list-group-flush">
+                {% for u in top_users|slice:":10" %}
+                <div class="list-group-item bg-transparent px-0 d-flex align-items-center">
+                    <div class="me-3">
+                        {% if forloop.counter <= 3 %}
+                        <i class="fas fa-medal fa-lg {% if forloop.counter == 1 %}text-warning{% elif forloop.counter == 2 %}text-secondary{% else %}text-danger{% endif %}"></i>
+                        {% else %}
+                        <span class="badge bg-light text-dark">{{ forloop.counter }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex-grow-1">
+                        <h6 class="mb-0">{{ u.username }}</h6>
+                        <small class="text-muted">{{ u.department|default:'' }}</small>
+                    </div>
+                    <span class="badge bg-warning text-dark">{{ u.points }}分</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="glass-card">
+            <h5 class="mb-3"><i class="fas fa-fire text-danger me-2"></i>热门活动</h5>
+            <div class="list-group list-group-flush">
+                {% for activity in hot_activities %}
+                <div class="list-group-item bg-transparent px-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">
+                                <a href="{% url 'activities:detail' activity.id %}" class="text-decoration-none">
+                                    {{ activity.title }}
+                                </a>
+                            </h6>
+                            <small class="text-muted">{{ activity.participants.count }}人参与</small>
+                        </div>
+                        <span class="badge bg-primary">+{{ activity.points }}分</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 打卡趋势图
+fetch('/dashboard/api/chart-data/?type=checkin_trend')
+    .then(response => response.json())
+    .then(data => {
+        new Chart(document.getElementById('checkinChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '打卡次数',
+                    data: data.data,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+
+// 分类分布图
+fetch('/dashboard/api/chart-data/?type=activity_category')
+    .then(response => response.json())
+    .then(data => {
+        new Chart(document.getElementById('categoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: data.data,
+                    backgroundColor: [
+                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,326 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>连续打卡 - 校园打卡平台</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .streak-hero {
+            background: linear-gradient(135deg, #f97316, #ef4444);
+            color: white;
+            padding: 3rem 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .streak-hero::before {
+            content: "🔥";
+            position: absolute;
+            font-size: 12rem;
+            opacity: 0.1;
+            top: -3rem;
+            right: -3rem;
+        }
+        .streak-number {
+            font-size: 5rem;
+            font-weight: 800;
+            line-height: 1;
+            margin: 1rem 0;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 1;
+        }
+        .streak-label {
+            font-size: 1.25rem;
+            opacity: 0.95;
+        }
+        .streak-message {
+            margin-top: 1rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 9999px;
+            display: inline-block;
+            font-size: 0.875rem;
+        }
+        .calendar-section {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.5rem;
+        }
+        .calendar-day-header {
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-light);
+            padding: 0.5rem;
+            font-weight: 600;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            background: #f1f5f9;
+            color: var(--text-light);
+            position: relative;
+        }
+        .calendar-day.checked {
+            background: linear-gradient(135deg, #f97316, #ef4444);
+            color: white;
+        }
+        .calendar-day.today {
+            border: 2px solid var(--primary);
+            font-weight: 700;
+        }
+        .calendar-day.other-month {
+            opacity: 0.3;
+        }
+        .milestone-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .milestone {
+            display: flex;
+            align-items: center;
+            padding: 1.25rem;
+            background: #f8fafc;
+            border-radius: 0.75rem;
+            border-left: 4px solid var(--border);
+            transition: all 0.3s ease;
+        }
+        .milestone.completed {
+            border-left-color: #16a34a;
+            background: #f0fdf4;
+        }
+        .milestone.current {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+            box-shadow: 0 0 0 2px #f59e0b;
+        }
+        .milestone-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            font-size: 1.75rem;
+            flex-shrink: 0;
+        }
+        .milestone.completed .milestone-icon {
+            background: #16a34a;
+            color: white;
+        }
+        .milestone.current .milestone-icon {
+            background: #f59e0b;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .milestone-info h4 {
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            font-size: 1.125rem;
+        }
+        .milestone-info p {
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+        .milestone-reward {
+            margin-left: auto;
+            text-align: right;
+        }
+        .milestone-reward .points {
+            color: #16a34a;
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+        .milestone-reward .status {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            margin-top: 0.25rem;
+        }
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-box {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+        .stat-box-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .stat-box-label {
+            font-size: 0.875rem;
+            color: var(--text-light);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">校园打卡</a>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/activities/" class="nav-link">🎯 活动广场</a>
+                <a href="/moments/" class="nav-link">💬 动态</a>
+                <a href="/users/profile/" class="nav-link active">👤 个人中心</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container" style="max-width: 800px;">
+        <!-- 连续打卡天数 -->
+        <div class="streak-hero">
+            <div class="streak-label">🔥 当前连续打卡</div>
+            <div class="streak-number">{{ streak_days|default:"0" }}</div>
+            <div class="streak-label">天</div>
+            {% if streak_days > 0 %}
+            <div class="streak-message">🎉 太棒了！继续保持，明天打卡可获得额外奖励！</div>
+            {% else %}
+            <div class="streak-message">💪 今天还没有打卡哦，快去参与活动吧！</div>
+            {% endif %}
+        </div>
+
+        <!-- 统计概览 -->
+        <div class="stats-row">
+            <div class="stat-box">
+                <div class="stat-box-number">{{ longest_streak|default:"0" }}</div>
+                <div class="stat-box-label">最长连续</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-box-number">{{ this_month_count|default:"0" }}</div>
+                <div class="stat-box-label">本月打卡</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-box-number">{{ total_checkins|default:"0" }}</div>
+                <div class="stat-box-label">累计打卡</div>
+            </div>
+        </div>
+
+        <!-- 本月打卡日历 -->
+        <div class="calendar-section">
+            <div class="calendar-header">
+                <h3 style="font-size: 1.125rem; font-weight: 600;">📅 {{ current_year }}年{{ current_month }}月打卡日历</h3>
+                <span style="color: var(--text-light); font-size: 0.875rem;">
+                    本月已打卡 <strong style="color: var(--primary);">{{ this_month_count|default:"0" }}</strong> 天
+                </span>
+            </div>
+            <div class="calendar-grid">
+                <div class="calendar-day-header">日</div>
+                <div class="calendar-day-header">一</div>
+                <div class="calendar-day-header">二</div>
+                <div class="calendar-day-header">三</div>
+                <div class="calendar-day-header">四</div>
+                <div class="calendar-day-header">五</div>
+                <div class="calendar-day-header">六</div>
+                
+                {% for day in calendar_days %}
+                <div class="calendar-day 
+                    {% if day.checked %}checked{% endif %} 
+                    {% if day.is_today %}today{% endif %}
+                    {% if day.other_month %}other-month{% endif %}">
+                    {% if day.checked %}✓{% else %}{{ day.date }}{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 打卡里程碑 -->
+        <div class="card">
+            <div class="card-header" style="background: #f8fafc; color: var(--text);">
+                <h3 style="font-size: 1.125rem;">🏆 打卡里程碑</h3>
+            </div>
+            <div class="card-body">
+                <div class="milestone-list">
+                    <div class="milestone {% if streak_days >= 3 %}completed{% elif streak_days >= 1 %}current{% endif %}">
+                        <div class="milestone-icon">🥉</div>
+                        <div class="milestone-info">
+                            <h4>连续3天</h4>
+                            <p>初出茅庐 - 开启打卡之旅</p>
+                        </div>
+                        <div class="milestone-reward">
+                            <div class="points">+10 积分</div>
+                            <div class="status">{% if streak_days >= 3 %}已达成{% else %}未达成{% endif %}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="milestone {% if streak_days >= 7 %}completed{% elif streak_days >= 3 %}current{% endif %}">
+                        <div class="milestone-icon">🥈</div>
+                        <div class="milestone-info">
+                            <h4>连续7天</h4>
+                            <p>坚持不懈 - 养成好习惯</p>
+                        </div>
+                        <div class="milestone-reward">
+                            <div class="points">+50 积分</div>
+                            <div class="status">{% if streak_days >= 7 %}已达成{% elif streak_days >= 3 %}进行中{% else %}未达成{% endif %}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="milestone {% if streak_days >= 30 %}completed{% elif streak_days >= 7 %}current{% endif %}">
+                        <div class="milestone-icon">🥇</div>
+                        <div class="milestone-info">
+                            <h4>连续30天</h4>
+                            <p>打卡达人 - 令人敬佩的毅力</p>
+                        </div>
+                        <div class="milestone-reward">
+                            <div class="points">+200 积分</div>
+                            <div class="status">{% if streak_days >= 30 %}已达成{% elif streak_days >= 7 %}进行中{% else %}未达成{% endif %}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="milestone {% if streak_days >= 100 %}completed{% elif streak_days >= 30 %}current{% endif %}">
+                        <div class="milestone-icon">💎</div>
+                        <div class="milestone-info">
+                            <h4>连续100天</h4>
+                            <p>传奇打卡王 - 无与伦比</p>
+                        </div>
+                        <div class="milestone-reward">
+                            <div class="points">+1000 积分</div>
+                            <div class="status">{% if streak_days >= 100 %}已达成{% elif streak_days >= 30 %}进行中{% else %}未达成{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+            <a href="/users/profile/" class="back-link">← 返回个人中心</a>
+        </div>
+    </div>
+</body>
+</html>

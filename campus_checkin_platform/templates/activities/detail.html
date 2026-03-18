@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ activity.title }} - 校园打卡平台{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左侧活动信息 -->
+    <div class="col-lg-8">
+        <div class="glass-card mb-4">
+            <img src="{% if activity.cover_image %}{{ activity.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}" 
+                 class="img-fluid rounded mb-4" alt="{{ activity.title }}" style="width: 100%; max-height: 400px; object-fit: cover;">
+            
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <span class="badge mb-2" style="background-color: {{ activity.category.color|default:'#3B82F6' }}">
+                        {{ activity.category.name|default:'其他' }}
+                    </span>
+                    <h2>{{ activity.title }}</h2>
+                </div>
+                <span class="badge bg-warning text-dark fs-6">
+                    <i class="fas fa-coins me-1"></i>+{{ activity.points }}积分
+                </span>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <p><i class="fas fa-calendar text-primary me-2"></i>
+                        <strong>开始时间：</strong>{{ activity.start_time|date:"Y年m月d日 H:i" }}
+                    </p>
+                    <p><i class="fas fa-calendar-check text-primary me-2"></i>
+                        <strong>结束时间：</strong>{{ activity.end_time|date:"Y年m月d日 H:i" }}
+                    </p>
+                    <p><i class="fas fa-map-marker-alt text-danger me-2"></i>
+                        <strong>活动地点：</strong>{{ activity.location }}
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p><i class="fas fa-users text-success me-2"></i>
+                        <strong>参与人数：</strong>{{ activity.participants.count }}/{{ activity.max_participants }}
+                    </p>
+                    <p><i class="fas fa-eye text-info me-2"></i>
+                        <strong>浏览次数：</strong>{{ activity.view_count }}
+                    </p>
+                    <p><i class="fas fa-user text-secondary me-2"></i>
+                        <strong>发起人：</strong>{{ activity.creator.username }}
+                    </p>
+                </div>
+            </div>
+            
+            <h5>活动描述</h5>
+            <p class="text-muted">{{ activity.description|linebreaks }}</p>
+            
+            {% if activity.requirements %}
+            <h5>参与要求</h5>
+            <p class="text-muted">{{ activity.requirements|linebreaks }}</p>
+            {% endif %}
+            
+            <hr>
+            
+            <!-- 操作按钮 -->
+            <div class="d-flex gap-2">
+                {% if user.is_authenticated %}
+                    {% if is_registered %}
+                        {% if can_checkin %}
+                        <a href="{% url 'checkins:checkin' %}" class="btn btn-success">
+                            <i class="fas fa-camera me-2"></i>立即打卡
+                        </a>
+                        {% else %}
+                        <button class="btn btn-secondary" disabled>
+                            <i class="fas fa-check me-2"></i>已报名
+                        </button>
+                        {% endif %}
+                    {% elif activity.is_full %}
+                    <button class="btn btn-danger" disabled>
+                        <i class="fas fa-ban me-2"></i>已满员
+                    </button>
+                    {% elif activity.status == 'ended' %}
+                    <button class="btn btn-secondary" disabled>
+                        <i class="fas fa-check-circle me-2"></i>已结束
+                    </button>
+                    {% else %}
+                    <button class="btn btn-primary" onclick="joinActivity({{ activity.id }})">
+                        <i class="fas fa-sign-in-alt me-2"></i>立即报名
+                    </button>
+                    {% endif %}
+                    
+                    {% if activity.creator == user or user.is_staff %}
+                    <a href="{% url 'activities:edit' activity.id %}" class="btn btn-outline-primary">
+                        <i class="fas fa-edit me-2"></i>编辑
+                    </a>
+                    <a href="{% url 'activities:delete' activity.id %}" class="btn btn-outline-danger">
+                        <i class="fas fa-trash me-2"></i>删除
+                    </a>
+                    {% endif %}
+                {% else %}
+                <a href="{% url 'users:login' %}?next={{ request.path }}" class="btn btn-primary">
+                    <i class="fas fa-sign-in-alt me-2"></i>登录后报名
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 评论区域 -->
+        <div class="glass-card">
+            <h4 class="mb-4"><i class="fas fa-comments text-primary me-2"></i>活动评论</h4>
+            
+            {% if user.is_authenticated %}
+            <form method="post" action="{% url 'activities:comment' activity.id %}" class="mb-4">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <textarea name="content" class="form-control" rows="3" placeholder="发表评论..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane me-2"></i>发表评论
+                </button>
+            </form>
+            {% endif %}
+            
+            <div class="list-group list-group-flush">
+                {% for comment in comments %}
+                <div class="list-group-item bg-transparent px-0">
+                    <div class="d-flex">
+                        <img src="{% if comment.user.avatar %}{{ comment.user.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}" 
+                             class="avatar me-3" alt="{{ comment.user.username }}">
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <h6 class="mb-1">{{ comment.user.username }}</h6>
+                                <small class="text-muted">{{ comment.created_at|timesince }}前</small>
+                            </div>
+                            <p class="mb-1">{{ comment.content }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-muted text-center py-3">暂无评论，快来发表第一条评论吧！</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- 右侧侧边栏 -->
+    <div class="col-lg-4">
+        <!-- 发起人信息 -->
+        <div class="glass-card mb-4">
+            <h5 class="mb-3">发起人</h5>
+            <div class="d-flex align-items-center">
+                <img src="{% if activity.creator.avatar %}{{ activity.creator.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}" 
+                     class="avatar me-3" alt="{{ activity.creator.username }}" style="width: 50px; height: 50px;">
+                <div>
+                    <h6 class="mb-0">{{ activity.creator.username }}</h6>
+                    <small class="text-muted">{{ activity.creator.department|default:'' }}</small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 相关活动 -->
+        <div class="glass-card">
+            <h5 class="mb-3">相关活动推荐</h5>
+            {% for related in related_activities %}
+            <div class="d-flex mb-3">
+                <img src="{% if related.cover_image %}{{ related.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}" 
+                     class="rounded me-3" alt="{{ related.title }}" style="width: 80px; height: 60px; object-fit: cover;">
+                <div>
+                    <h6 class="mb-1"><a href="{% url 'activities:detail' related.id %}" class="text-decoration-none">{{ related.title }}</a></h6>
+                    <small class="text-muted">{{ related.start_time|date:"m月d日" }}</small>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted">暂无相关活动</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function joinActivity(activityId) {
+    if (!confirm('确定要报名此活动吗？')) return;
+    
+    fetch(`/activities/${activityId}/join/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken,
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('报名成功！');
+            location.reload();
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('报名失败，请重试');
+    });
+}
+</script>
+{% endblock %}

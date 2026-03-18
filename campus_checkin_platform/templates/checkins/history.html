@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}打卡记录 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<div class="glass-card">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-history text-primary me-2"></i>打卡记录</h2>
+        <a href="{% url 'checkins:checkin' %}" class="btn btn-primary">
+            <i class="fas fa-camera me-2"></i>去打卡
+        </a>
+    </div>
+    
+    {% if checkins %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>活动</th>
+                    <th>打卡时间</th>
+                    <th>状态</th>
+                    <th>获得积分</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for checkin in checkins %}
+                <tr>
+                    <td>
+                        <a href="{% url 'activities:detail' checkin.activity.id %}" class="text-decoration-none">
+                            {{ checkin.activity.title }}
+                        </a>
+                    </td>
+                    <td>{{ checkin.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        {% if checkin.status == 'approved' %}
+                        <span class="badge bg-success">已通过</span>
+                        {% elif checkin.status == 'pending' %}
+                        <span class="badge bg-warning text-dark">待审核</span>
+                        {% else %}
+                        <span class="badge bg-danger">已拒绝</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if checkin.status == 'approved' %}
+                        <span class="text-success">+{{ checkin.points_earned }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'checkins:detail' checkin.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- 分页 -->
+    {% if checkins.has_other_pages %}
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if checkins.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ checkins.previous_page_number }}">上一页</a>
+            </li>
+            {% endif %}
+            
+            {% for num in checkins.paginator.page_range %}
+                {% if checkins.number == num %}
+                <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                {% elif num > checkins.number|add:'-3' and num < checkins.number|add:'3' %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                </li>
+                {% endif %}
+            {% endfor %}
+            
+            {% if checkins.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ checkins.next_page_number }}">下一页</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+    
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-camera fa-4x text-muted mb-3"></i>
+        <h4>还没有打卡记录</h4>
+        <p class="text-muted">快去参与活动并打卡吧！</p>
+        <a href="{% url 'activities:list' %}" class="btn btn-primary">
+            <i class="fas fa-calendar-alt me-2"></i>浏览活动
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

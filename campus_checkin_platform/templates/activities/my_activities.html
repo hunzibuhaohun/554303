@@ -1,0 +1,167 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的活动 - 校园打卡平台</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .activity-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+        }
+        .activity-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .activity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+        .activity-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+        .activity-meta {
+            display: flex;
+            gap: 1rem;
+            color: var(--text-light);
+            font-size: 0.875rem;
+            flex-wrap: wrap;
+        }
+        .activity-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .activity-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .status-ongoing {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .status-ended {
+            background: #f3f4f6;
+            color: #6b7280;
+        }
+        .status-upcoming {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-light);
+        }
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        .create-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+        .tab {
+            padding: 0.75rem 1rem;
+            color: var(--text-light);
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">校园打卡</a>
+            <div style="display: flex; gap: 0.5rem;">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/activities/" class="nav-link">🎯 活动广场</a>
+                <a href="/moments/" class="nav-link">💬 动态</a>
+                <a href="/users/profile/" class="nav-link active">👤 个人中心</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-container">
+        <div class="card">
+            <div class="card-header">
+                <h1 style="font-size: 1.5rem;">📋 我的活动</h1>
+            </div>
+            <div class="card-body">
+                <!-- 标签页 -->
+                <div class="tabs">
+                    <a href="?type=created" class="tab {% if current_type == 'created' %}active{% endif %}">我创建的</a>
+                    <a href="?type=joined" class="tab {% if current_type == 'joined' %}active{% endif %}">我参与的</a>
+                    <a href="?type=checked" class="tab {% if current_type == 'checked' %}active{% endif %}">已打卡</a>
+                </div>
+
+                {% if activities %}
+                    {% for activity in activities %}
+                    <div class="activity-card">
+                        <div class="activity-header">
+                            <div>
+                                <div class="activity-title">{{ activity.title }}</div>
+                                <div class="activity-meta">
+                                    <span>📍 {{ activity.location }}</span>
+                                    <span>📅 {{ activity.start_time|date:"Y-m-d H:i" }}</span>
+                                    <span>👥 {{ activity.participant_count }}人参与</span>
+                                </div>
+                            </div>
+                            <span class="activity-status status-{{ activity.status }}">
+                                {% if activity.status == 'ongoing' %}进行中
+                                {% elif activity.status == 'ended' %}已结束
+                                {% else %}即将开始{% endif %}
+                            </span>
+                        </div>
+                        <p style="color: var(--text-light); margin-bottom: 1rem;">{{ activity.description|truncatewords:20 }}</p>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <a href="/activities/{{ activity.id }}/" class="btn btn-primary btn-sm">查看详情</a>
+                            {% if activity.creator == user %}
+                            <a href="/activities/{{ activity.id }}/edit/" class="btn btn-secondary btn-sm">编辑</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>暂无活动记录</h3>
+                        <p>您还没有{% if current_type == 'created' %}创建{% else %}参与{% endif %}任何活动</p>
+                        <a href="/activities/create/" class="btn btn-primary create-btn">➕ 创建新活动</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

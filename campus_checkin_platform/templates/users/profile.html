@@ -1,0 +1,413 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人中心 - 校园打卡平台</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <style>
+        .profile-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .profile-header::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+        }
+        .profile-info {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 4px solid rgba(255,255,255,0.3);
+            object-fit: cover;
+        }
+        .profile-name {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .profile-id {
+            opacity: 0.9;
+            font-size: 0.875rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 0.75rem;
+            font-size: 1.5rem;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 0.25rem;
+        }
+        .stat-label {
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .action-btn {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+        .action-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-lg);
+        }
+        .action-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 0.75rem;
+            font-size: 1.75rem;
+        }
+        .action-label {
+            font-weight: 600;
+            color: var(--text);
+        }
+        .section-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .section-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .view-all {
+            color: var(--primary);
+            font-size: 0.875rem;
+            text-decoration: none;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-light);
+        }
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: 0.75rem;
+            box-shadow: var(--shadow-lg);
+            min-width: 200px;
+            padding: 0.5rem;
+            z-index: 1000;
+            display: none;
+        }
+        .dropdown-menu.show {
+            display: block;
+        }
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            color: var(--text);
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .dropdown-item:hover {
+            background: #f1f5f9;
+        }
+        .user-menu {
+            position: relative;
+        }
+        .user-trigger {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            transition: background 0.2s;
+        }
+        .user-trigger:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+        .user-avatar-small {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        @media (max-width: 768px) {
+            .stats-grid, .quick-actions {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">校园打卡</a>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <a href="/" class="nav-link">🏠 首页</a>
+                <a href="/activities/" class="nav-link">🎯 活动广场</a>
+                <a href="/moments/" class="nav-link">💬 动态</a>
+                <a href="/users/data-center/" class="nav-link">📊 数据中心</a>
+                <div class="user-menu">
+                    <div class="user-trigger" onclick="toggleDropdown()">
+                        {% if user.avatar %}
+                            <img src="{{ user.avatar.url }}" alt="头像" class="user-avatar-small">
+                        {% else %}
+                            <img src="{% static 'images/default-avatar.png' %}" alt="默认头像" class="user-avatar-small">
+                        {% endif %}
+                        <span>{{ user.student_id|default:user.username }}</span>
+                        <span>▼</span>
+                    </div>
+                    <div class="dropdown-menu" id="userDropdown">
+                        <div style="padding: 0.75rem; border-bottom: 1px solid var(--border); margin-bottom: 0.5rem;">
+                            <div style="font-weight: 600;">{{ user.get_full_name|default:user.username }}</div>
+                            <div style="font-size: 0.875rem; color: var(--text-light);">🪙 {{ user.points|default:"0" }} 积分</div>
+                        </div>
+                        <a href="/users/profile/" class="dropdown-item">👤 个人中心</a>
+                        <a href="/activities/my/" class="dropdown-item">📋 我的活动</a>
+                        <a href="/users/checkin-history/" class="dropdown-item">📝 打卡记录</a>
+                        <a href="/users/settings/" class="dropdown-item">⚙️ 设置</a>
+                        <div style="border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.5rem;">
+                            <a href="/users/logout/" class="dropdown-item" style="color: #dc2626;">🚪 退出登录</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容 -->
+    <div class="main-container">
+        <!-- 个人信息头部 -->
+        <div class="profile-header">
+            <div class="profile-info">
+                {% if user.avatar %}
+                    <img src="{{ user.avatar.url }}" alt="头像" class="profile-avatar">
+                {% else %}
+                    <img src="{% static 'images/default-avatar.png' %}" alt="默认头像" class="profile-avatar">
+                {% endif %}
+                <div>
+                    <div class="profile-name">{{ user.get_full_name|default:user.username }}</div>
+                    <div class="profile-id">@{{ user.student_id|default:user.username }}</div>
+                    <div style="margin-top: 0.5rem; display: flex; gap: 1rem; font-size: 0.875rem;">
+                        <span>🏫 {{ user.department|default:"未设置院系" }}</span>
+                        <span>📚 {{ user.major|default:"未设置专业" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计卡片 - 可点击 -->
+        <div class="stats-grid">
+            <a href="/users/checkin-history/" class="stat-card">
+                <div class="stat-icon" style="background: #dcfce7; color: #16a34a;">✓</div>
+                <div class="stat-number">{{ user.total_checkins|default:"0" }}</div>
+                <div class="stat-label">累计打卡</div>
+            </a>
+            <a href="/users/points/" class="stat-card">
+                <div class="stat-icon" style="background: #fef3c7; color: #f59e0b;">🪙</div>
+                <div class="stat-number">{{ user.points|default:"0" }}</div>
+                <div class="stat-label">当前积分</div>
+            </a>
+            <a href="/activities/my/?type=joined" class="stat-card">
+                <div class="stat-icon" style="background: #dbeafe; color: #3b82f6;">📅</div>
+                <div class="stat-number">{{ user.activities_joined|default:"0" }}</div>
+                <div class="stat-label">参与活动</div>
+            </a>
+            <a href="/users/checkin-streak/" class="stat-card">
+                <div class="stat-icon" style="background: #fee2e2; color: #ef4444;">🔥</div>
+                <div class="stat-number">{{ user.streak_days|default:"0" }}</div>
+                <div class="stat-label">连续打卡</div>
+            </a>
+        </div>
+
+        <!-- 快捷操作 -->
+        <div class="quick-actions">
+            <a href="/activities/create/" class="action-btn">
+                <div class="action-icon" style="background: #eff6ff; color: #3b82f6;">➕</div>
+                <div class="action-label">创建活动</div>
+            </a>
+            <a href="/checkin/quick/" class="action-btn">
+                <div class="action-icon" style="background: #f0fdf4; color: #16a34a;">📷</div>
+                <div class="action-label">快速打卡</div>
+            </a>
+            <a href="/moments/create/" class="action-btn">
+                <div class="action-icon" style="background: #fef3c7; color: #f59e0b;">💬</div>
+                <div class="action-label">发布动态</div>
+            </a>
+            <a href="/users/data-center/" class="action-btn">
+                <div class="action-icon" style="background: #fdf2f8; color: #ec4899;">📊</div>
+                <div class="action-label">数据报表</div>
+            </a>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <!-- 最近打卡 -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title">✅ 最近打卡</h3>
+                    <a href="/users/checkin-history/" class="view-all">查看全部 →</a>
+                </div>
+                {% if recent_checkins %}
+                    {% for checkin in recent_checkins %}
+                    <div style="display: flex; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border);">
+                        <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; color: white; margin-right: 0.75rem;">✓</div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600;">{{ checkin.activity.title }}</div>
+                            <div style="font-size: 0.875rem; color: var(--text-light);">{{ checkin.created_at|date:"m-d H:i" }}</div>
+                        </div>
+                        <div style="color: #16a34a; font-weight: 600;">+{{ checkin.points }}分</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div style="font-size: 3rem; margin-bottom: 0.5rem;">📝</div>
+                        <p>还没有打卡记录</p>
+                        <a href="/activities/" class="btn btn-primary btn-sm" style="margin-top: 0.5rem;">去打卡</a>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- 我的活动 -->
+            <div class="section-card">
+                <div class="section-header">
+                    <h3 class="section-title">📋 我的活动</h3>
+                    <a href="/activities/my/" class="view-all">查看全部 →</a>
+                </div>
+                {% if recent_activities %}
+                    {% for activity in recent_activities %}
+                    <div style="display: flex; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border);">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600;">{{ activity.title }}</div>
+                            <div style="font-size: 0.875rem; color: var(--text-light);">📅 {{ activity.start_time|date:"m-d" }} 📍 {{ activity.location }}</div>
+                        </div>
+                        <span style="padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; 
+                            {% if activity.status == 'ongoing' %}background: #dcfce7; color: #16a34a;
+                            {% else %}background: #f3f4f6; color: #6b7280;{% endif %}">
+                            {% if activity.status == 'ongoing' %}进行中{% else %}已结束{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <div style="font-size: 3rem; margin-bottom: 0.5rem;">🎯</div>
+                        <p>还没有参与活动</p>
+                        <a href="/activities/" class="btn btn-primary btn-sm" style="margin-top: 0.5rem;">去发现</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 我的成就 -->
+        <div class="section-card" style="margin-top: 1.5rem;">
+            <div class="section-header">
+                <h3 class="section-title">🏆 我的成就</h3>
+            </div>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <div style="text-align: center; padding: 1rem; opacity: 0.5;">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🥉</div>
+                    <div style="font-size: 0.875rem;">初次打卡</div>
+                </div>
+                <div style="text-align: center; padding: 1rem; opacity: 0.5;">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🥈</div>
+                    <div style="font-size: 0.875rem;">连续7天</div>
+                </div>
+                <div style="text-align: center; padding: 1rem; opacity: 0.5;">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🥇</div>
+                    <div style="font-size: 0.875rem;">打卡达人</div>
+                </div>
+                <div style="text-align: center; padding: 1rem;">
+                    <div style="font-size: 2.5rem; margin-bottom: 0.5rem; filter: grayscale(100%);">💎</div>
+                    <div style="font-size: 0.875rem; color: var(--text-light);">未解锁</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleDropdown() {
+            document.getElementById('userDropdown').classList.toggle('show');
+        }
+        
+        // 点击外部关闭下拉菜单
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.user-menu')) {
+                document.getElementById('userDropdown').classList.remove('show');
+            }
+        });
+    </script>
+</body>
+</html>
