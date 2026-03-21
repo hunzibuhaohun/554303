@@ -51,7 +51,8 @@ class Activity(models.Model):
     cover_image = models.ImageField(
         '封面图片',
         upload_to='activities/covers/%Y/%m/',
-        default='activities/default.jpg'
+        blank=True,
+        null=True
     )
 
     # ==================== 关联字段 ====================
@@ -67,6 +68,23 @@ class Activity(models.Model):
         related_name='created_activities',
         verbose_name='创建者'
     )
+    managers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='managed_activities',
+        blank=True,
+        verbose_name='活动管理者'
+    )
+
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='closed_activities',
+        verbose_name='关闭操作人'
+    )
+
+    closed_at = models.DateTimeField('关闭时间', null=True, blank=True)
 
     # ==================== 时间信息 ====================
     start_time = models.DateTimeField('开始时间')
@@ -117,6 +135,28 @@ class Activity(models.Model):
 
     def __str__(self):
         return self.title
+
+    def can_edit(self, user):
+        """创建者或活动管理者可编辑；总管理员不可编辑活动内容"""
+        if not user or not user.is_authenticated:
+            return False
+        #创建者可以编辑
+        if self.creator_id == user.id:
+            return True
+        #只有被指定为活动管理者的人才能编辑
+        return self.managers.filter(id=user.id).exists()
+
+    def can_delete(self, user):
+        """这里建议只有创建者可删除，避免管理者误删"""
+        if not user or not user.is_authenticated:
+            return False
+        return self.creator_id == user.id
+
+    def can_close(self, user):
+        """只有总管理员可以关闭活动"""
+        if not user or not user.is_authenticated:
+            return False
+        return getattr(user, 'role', None) == 'admin'
 
     # ==================== 自定义属性（模板和前端直接使用） ====================
     @property

@@ -79,6 +79,8 @@ def login_view(request):
     return render(request, 'users/login.html', {'form': form})
 
 
+@login_required
+@require_POST
 def logout_view(request):
     """用户退出视图"""
     logout(request)
@@ -407,6 +409,7 @@ def change_password_view(request):
         form = CustomPasswordChangeForm(user=request.user, data=request.POST)
         if form.is_valid():
             form.save()
+            logout(request)
             messages.success(request, '密码修改成功，请重新登录')
             return redirect('users:login')
     else:

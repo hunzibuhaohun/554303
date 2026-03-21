@@ -59,44 +59,73 @@
             <hr>
             
             <!-- 操作按钮 -->
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 {% if user.is_authenticated %}
                     {% if is_registered %}
                         {% if can_checkin %}
-                        <a href="{% url 'checkins:checkin' %}" class="btn btn-success">
-                            <i class="fas fa-camera me-2"></i>立即打卡
-                        </a>
+                            <a href="{% url 'checkins:checkin' %}" class="btn btn-success">
+                                <i class="fas fa-check-circle me-2"></i>立即打卡
+                            </a>
                         {% else %}
-                        <button class="btn btn-secondary" disabled>
-                            <i class="fas fa-check me-2"></i>已报名
-                        </button>
+                            <button class="btn btn-secondary" disabled>
+                                <i class="fas fa-user-check me-2"></i>已报名
+                            </button>
                         {% endif %}
+
+                        {% if activity.status == 'upcoming' and registration.status == 'registered' %}
+                            <form method="post" action="{% url 'activities:cancel' activity.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-warning">
+                                    <i class="fas fa-user-minus me-2"></i>取消报名
+                                </button>
+                            </form>
+                        {% endif %}
+
                     {% elif activity.is_full %}
-                    <button class="btn btn-danger" disabled>
-                        <i class="fas fa-ban me-2"></i>已满员
-                    </button>
+                        <button class="btn btn-secondary" disabled>
+                            <i class="fas fa-users me-2"></i>已满员
+                        </button>
+                    {% elif activity.status == 'cancelled' %}
+                        <button class="btn btn-dark" disabled>
+                            <i class="fas fa-ban me-2"></i>已关闭
+                        </button>
                     {% elif activity.status == 'ended' %}
-                    <button class="btn btn-secondary" disabled>
-                        <i class="fas fa-check-circle me-2"></i>已结束
-                    </button>
+                        <button class="btn btn-secondary" disabled>
+                            <i class="fas fa-clock me-2"></i>已结束
+                        </button>
                     {% else %}
-                    <button class="btn btn-primary" onclick="joinActivity({{ activity.id }})">
-                        <i class="fas fa-sign-in-alt me-2"></i>立即报名
-                    </button>
+                        <form method="post" action="{% url 'activities:join' activity.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus me-2"></i>立即报名
+                            </button>
+                        </form>
                     {% endif %}
-                    
-                    {% if activity.creator == user or user.is_staff %}
-                    <a href="{% url 'activities:edit' activity.id %}" class="btn btn-outline-primary">
-                        <i class="fas fa-edit me-2"></i>编辑
-                    </a>
-                    <a href="{% url 'activities:delete' activity.id %}" class="btn btn-outline-danger">
-                        <i class="fas fa-trash me-2"></i>删除
-                    </a>
+
+                    {% if can_edit_activity %}
+                        <a href="{% url 'activities:edit' activity.id %}" class="btn btn-outline-primary">
+                            <i class="fas fa-edit me-2"></i>编辑
+                        </a>
+                    {% endif %}
+
+                    {% if can_delete_activity %}
+                        <a href="{% url 'activities:delete' activity.id %}" class="btn btn-outline-danger">
+                            <i class="fas fa-trash me-2"></i>删除
+                        </a>
+                    {% endif %}
+
+                    {% if can_close_activity and activity.status != 'cancelled' %}
+                        <form method="post" action="{% url 'activities:close' activity.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-dark">
+                                <i class="fas fa-ban me-2"></i>关闭活动
+                            </button>
+                        </form>
                     {% endif %}
                 {% else %}
-                <a href="{% url 'users:login' %}?next={{ request.path }}" class="btn btn-primary">
-                    <i class="fas fa-sign-in-alt me-2"></i>登录后报名
-                </a>
+                    <a href="{% url 'users:login' %}?next={{ request.path }}" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt me-2"></i>登录后报名
+                    </a>
                 {% endif %}
             </div>
         </div>
@@ -172,33 +201,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-function joinActivity(activityId) {
-    if (!confirm('确定要报名此活动吗？')) return;
-    
-    fetch(`/activities/${activityId}/join/`, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': csrftoken,
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('报名成功！');
-            location.reload();
-        } else {
-            alert(data.message);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('报名失败，请重试');
-    });
-}
-</script>
 {% endblock %}

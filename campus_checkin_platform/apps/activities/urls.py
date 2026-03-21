@@ -15,6 +15,7 @@ urlpatterns = [
     path('create/', views.activity_create, name='create'),
     path('<int:pk>/edit/', views.activity_edit, name='edit'),
     path('<int:pk>/delete/', views.activity_delete, name='delete'),
+    path('<int:pk>/close/', views.close_activity, name='close'),
     
     # 报名相关
     path('<int:pk>/join/', views.join_activity, name='join'),

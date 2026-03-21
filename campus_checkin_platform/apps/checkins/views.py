@@ -25,7 +25,7 @@ from .serializers import CheckInSerializer
 # ====================== 主打卡页面视图 ======================
 @login_required
 def checkin_view(request):
-    """打卡提交主视图（支持模板表单 + AJAX/SweetAlert）"""
+    """打卡提交主视图"""
     registrations = ActivityRegistration.objects.filter(
         user=request.user,
         status='registered'
@@ -36,23 +36,45 @@ def checkin_view(request):
 
         if form.is_valid():
             activity = form.cleaned_data['activity']
+            registration = form.cleaned_data['registration']
 
-            # 位置验证
+            # 位置验证：位置是可选的，只有提供了真实经纬度时才校验
             lat = form.cleaned_data.get('latitude')
             lng = form.cleaned_data.get('longitude')
-            if activity.location_lat and activity.location_lng and lat and lng:
-                is_valid, msg = verify_location(lat, lng, activity.location_lat, activity.location_lng, activity.checkin_radius)
+
+            has_real_location = (
+                lat is not None and lng is not None and
+                not (float(lat) == 0 and float(lng) == 0)
+            )
+
+            if (
+                activity.location_lat is not None and
+                activity.location_lng is not None and
+                has_real_location
+            ):
+                is_valid, msg = verify_location(
+                    lat,
+                    lng,
+                    activity.location_lat,
+                    activity.location_lng,
+                    activity.checkin_radius
+                )
                 if not is_valid:
                     messages.error(request, f'位置验证失败：{msg}')
-                    return render(request, 'checkins/checkin.html', {'form': form, 'registrations': registrations})
+                    return render(request, 'checkins/checkin.html', {
+                        'form': form,
+                        'registrations': registrations
+                    })
 
             # 防重复打卡
             today = timezone.now().date()
-            if CheckIn.objects.filter(user=request.user, activity=activity, created_at__date=today).exists():
+            if CheckIn.objects.filter(
+                user=request.user,
+                activity=activity,
+                created_at__date=today
+            ).exists():
                 messages.warning(request, '您今天已经打过卡了！')
                 return redirect('checkins:history')
-
-            registration = get_object_or_404(ActivityRegistration, user=request.user, activity=activity)
 
             with transaction.atomic():
                 checkin = form.save(commit=False)
@@ -67,7 +89,7 @@ def checkin_view(request):
                 for photo in photos:
                     CheckInPhoto.objects.create(checkin=checkin, image=photo)
 
-                # 连续打卡 + 积分发放（论文核心）
+                # 连续打卡 + 积分发放
                 streak = calculate_continuous_days(request.user, activity)
                 points = award_points(request.user, activity, streak)
 
@@ -78,10 +100,10 @@ def checkin_view(request):
                     related_checkin=checkin
                 )
 
-                # 更新报名状态为已完成
+                # 更新报名状态
                 registration.status = 'completed'
                 registration.checked_in_at = timezone.now()
-                registration.save()
+                registration.save(update_fields=['status', 'checked_in_at'])
 
             messages.success(request, f'打卡成功！+{points}积分，连续打卡 {streak} 天！🎉')
 
@@ -96,6 +118,10 @@ def checkin_view(request):
             return redirect('checkins:history')
 
         else:
+            print("===== CheckInForm.errors =====")
+            print(form.errors.as_json())
+            print("===== CheckInForm.non_field_errors =====")
+            print(form.non_field_errors())
             messages.error(request, '表单验证失败，请检查内容')
 
     else:
@@ -162,14 +188,15 @@ def pending_checkins(request):
 @require_POST
 def approve_checkin(request, pk):
     """通过审核"""
-    if not request.user.is_staff:
+    if getattr(request.user, 'role', None) != 'admin':
         return JsonResponse({'success': False, 'message': '无权限'})
+
     checkin = get_object_or_404(CheckIn, pk=pk)
     checkin.status = 'approved'
-    checkin.reviewer = request.user
+    checkin.reviewed_by = request.user
     checkin.review_note = request.POST.get('note', '')
-    checkin.reviewed_at = timezone.now()
-    checkin.save()
+    checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
+
     return JsonResponse({'success': True, 'message': '审核通过'})
 
 
@@ -177,14 +204,15 @@ def approve_checkin(request, pk):
 @require_POST
 def reject_checkin(request, pk):
     """拒绝审核"""
-    if not request.user.is_staff:
+    if getattr(request.user, 'role', None) != 'admin':
         return JsonResponse({'success': False, 'message': '无权限'})
+
     checkin = get_object_or_404(CheckIn, pk=pk)
     checkin.status = 'rejected'
-    checkin.reviewer = request.user
+    checkin.reviewed_by = request.user
     checkin.review_note = request.POST.get('note', '')
-    checkin.reviewed_at = timezone.now()
-    checkin.save()
+    checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
+
     return JsonResponse({'success': True, 'message': '已拒绝'})
 
 

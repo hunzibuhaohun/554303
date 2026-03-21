@@ -41,10 +41,10 @@ class CheckIn(models.Model):
     remark = models.TextField('打卡备注', blank=True)
 
     # 定位信息（支持地图打卡）
-    location_name = models.CharField('位置名称', max_length=200, blank=True)
-    latitude = models.DecimalField('纬度', max_digits=10, decimal_places=7)
-    longitude = models.DecimalField('经度', max_digits=10, decimal_places=7)
-    accuracy = models.FloatField('精度(米)', null=True, blank=True)
+    location_name = models.CharField('位置名称', max_length=200, blank=True, default='未获取位置')
+    latitude = models.DecimalField('纬度', max_digits=10, decimal_places=7, default=0, blank=True)
+    longitude = models.DecimalField('经度', max_digits=10, decimal_places=7, default=0, blank=True)
+    accuracy = models.FloatField('精度(米)', null=True, blank=True, default=9999)
 
     # 审核状态（论文中未强制要求，但你已实现，保留）
     status = models.CharField(
@@ -78,8 +78,7 @@ class CheckIn(models.Model):
             models.Index(fields=['user', 'created_at']),
             models.Index(fields=['activity', 'status']),
         ]
-        # 防重复打卡：同一用户同一天同一活动只能打一次
-        unique_together = ('user', 'activity', 'created_at')
+        
 
     def __str__(self):
         return f"{self.user.username} - {self.activity.title} - {self.created_at.strftime('%Y-%m-%d')}"

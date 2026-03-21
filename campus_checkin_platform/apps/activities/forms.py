@@ -2,6 +2,7 @@
 活动表单 - 校园打卡平台
 """
 from django import forms
+from django.contrib.auth import get_user_model
 from .models import Activity, ActivityComment, Category
 
 
@@ -9,11 +10,14 @@ class ActivityForm(forms.ModelForm):
     """活动创建/编辑表单"""
     class Meta:
         model = Activity
-        fields = ['title', 'description', 'cover_image', 'category',
-                  'start_time', 'end_time', 'registration_deadline',
-                  'location', 'location_lat', 'location_lng',
-                  'max_participants', 'min_participants', 'points',
-                  'requirements', 'allow_checkin_before_start', 'checkin_radius']
+        fields = [
+            'title', 'description', 'cover_image', 'category',
+            'start_time', 'end_time', 'registration_deadline',
+            'location', 'location_lat', 'location_lng',
+            'max_participants', 'min_participants', 'points',
+            'requirements', 'allow_checkin_before_start', 'checkin_radius',
+            'managers',
+        ]
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': '请输入活动标题'
@@ -62,6 +66,9 @@ class ActivityForm(forms.ModelForm):
                 'min': 0,
                 'placeholder': '允许打卡的范围（米）'
             }),
+            'managers': forms.SelectMultiple(attrs={
+                'class': 'form-select'
+            }),
         }
 
     def __init__(self, *args, **kwargs):
@@ -71,19 +78,26 @@ class ActivityForm(forms.ModelForm):
         self.fields['category'].queryset = Category.objects.filter(is_active=True)
         self.fields['category'].empty_label = '选择分类'
 
+        # 设置活动管理者选项
+        User = get_user_model()
+        self.fields['managers'].queryset = User.objects.exclude(role='admin')
+        self.fields['managers'].required = False
+        self.fields['managers'].label = '活动管理者（可选）'
+        self.fields['managers'].help_text = '可选，活动管理者可以协助编辑活动内容'
+
         # 为所有字段添加 Bootstrap 样式（除了特殊字段）
         for field_name, field in self.fields.items():
             if field_name == 'allow_checkin_before_start':
-                # 复选框保持 form-check-input
+                # 复选框
                 field.widget.attrs['class'] = 'form-check-input'
-            elif field_name == 'category':
-                # 下拉框使用 form-select
+            elif field_name in ['category', 'managers']:
+                # 下拉框 / 多选框
                 field.widget.attrs['class'] = 'form-select'
             elif field_name == 'cover_image':
-                # 文件上传使用 form-control
+                # 文件上传
                 field.widget.attrs['class'] = 'form-control'
             else:
-                # 其他字段使用 form-control
+                # 其他输入框
                 field.widget.attrs.setdefault('class', '')
                 field.widget.attrs['class'] += ' form-control'
 

@@ -14,7 +14,9 @@ urlpatterns = [
     
     # API
     path('api/verify-location/', views.verify_location_api, name='verify_location'),
-    
+
+
+
     # 审核（管理员）
     path('pending/', views.pending_checkins, name='pending'),
     path('<int:pk>/approve/', views.approve_checkin, name='approve'),

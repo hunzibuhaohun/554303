@@ -32,6 +32,6 @@ urlpatterns = [
     path('points/', views.points_view, name='points'),
 
     # 其他
-    path('settings/', views.settings_view, name='settings'),
+
     path('data-center/', views.data_center_view, name='data_center'),
 ]

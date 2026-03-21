@@ -56,6 +56,26 @@ class User(AbstractUser):
         choices=ROLE_CHOICES,
         default='student'
     )
+
+    def is_student(self):
+        return self.role == 'student'
+
+    def is_activity_manager(self):
+        return self.role == 'teacher'
+
+    def is_platform_admin(self):
+        return self.role == 'admin'
+
+    def can_create_activity(self):
+        return self.role in ['teacher', 'admin']
+
+    def can_manage_activity(self, activity):
+        if self.role == 'admin':
+            return True
+        if self.role == 'teacher' and activity.creator_id == self.id:
+            return True
+        return False
+
     is_verified = models.BooleanField('是否认证', default=False)
 
     # 个人资料

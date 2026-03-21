@@ -149,6 +149,16 @@
                     <label class="form-label">参与要求</label>
                     {{ form.requirements }}
                 </div>
+                <!-- 活动管理者 -->
+                <div class="mb-3">
+    <label class="form-label">活动管理者（可选）</label>
+    {{ form.managers }}
+    {% if form.managers.errors %}
+        <div class="text-danger small mt-1">
+            {{ form.managers.errors }}
+        </div>
+    {% endif %}
+</div>
                 
                 <!-- 允许开始前打卡 -->
                 <div class="mb-3 form-check">

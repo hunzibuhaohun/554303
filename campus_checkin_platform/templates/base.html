@@ -161,9 +161,14 @@
                                 <i class="fas fa-cog me-2"></i>设置
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="{% url 'users:logout' %}">
-                                <i class="fas fa-sign-out-alt me-2"></i>退出登录
-                            </a></li>
+                            <li>
+                                <form method="post" action="{% url 'users:logout' %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <i class="fas fa-sign-out-alt me-2"></i>退出登录
+                                    </button>
+                                </form>
+                            </li>
                         </ul>
                     </li>
                     {% else %}
@@ -255,7 +260,17 @@
         }
         const csrftoken = getCookie('csrftoken');
     </script>
-    
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(function(alert) {
+                setTimeout(function() {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 3000);
+            });
+        });
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
