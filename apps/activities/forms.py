@@ -16,7 +16,7 @@ class ActivityForm(forms.ModelForm):
             'location', 'location_lat', 'location_lng',
             'max_participants', 'min_participants', 'points',
             'requirements', 'allow_checkin_before_start', 'checkin_radius',
-            'managers',
+            'checkin_review_mode', 'managers',
         ]
         widgets = {
             'title': forms.TextInput(attrs={
@@ -69,6 +69,9 @@ class ActivityForm(forms.ModelForm):
             'managers': forms.SelectMultiple(attrs={
                 'class': 'form-select'
             }),
+            'checkin_review_mode': forms.Select(attrs={
+                'class': 'form-select'
+            }),
         }
 
     def __init__(self, *args, **kwargs):
@@ -84,6 +87,11 @@ class ActivityForm(forms.ModelForm):
         self.fields['managers'].required = False
         self.fields['managers'].label = '活动管理者（可选）'
         self.fields['managers'].help_text = '可选，活动管理者可以协助编辑活动内容'
+
+        self.fields['checkin_review_mode'].label = '打卡审核模式'
+        self.fields['checkin_review_mode'].help_text = '自动通过 / 人工审核 / 异常审核'
+        self.fields['checkin_review_mode'].initial = 'auto'
+
 
         # 为所有字段添加 Bootstrap 样式（除了特殊字段）
         for field_name, field in self.fields.items():

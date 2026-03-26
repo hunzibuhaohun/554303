@@ -2,6 +2,8 @@
 chcp 65001 >nul
 echo Starting Campus Checkin Platform...
 
+cd /d "%~dp0"
+
 REM Activate virtual environment
 call venv\Scripts\activate.bat
 

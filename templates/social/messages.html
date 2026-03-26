@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+
+{% block title %}消息中心 - 校园打卡平台{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="glass-card">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-4">
+                <div>
+                    <h2 class="mb-1">
+                        <i class="fas fa-bell text-primary me-2"></i>消息中心
+                    </h2>
+                    <p class="text-muted mb-0">查看互动通知、活动通知与系统消息</p>
+                </div>
+                <div class="mt-3 mt-lg-0 d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="markAllReadBtn">
+                        <i class="fas fa-check-double me-1"></i>全部标为已读
+                    </button>
+                </div>
+            </div>
+
+            <form method="get" class="row g-2 mb-4">
+                <div class="col-md-8">
+                    <input
+                        type="text"
+                        name="q"
+                        value="{{ keyword }}"
+                        class="form-control"
+                        placeholder="搜索标题或内容"
+                    >
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-search me-1"></i>搜索
+                    </button>
+                </div>
+            </form>
+
+            <div class="mb-4 d-flex flex-wrap gap-2">
+                <a href="{% url 'social:messages' %}?type=all{% if keyword %}&q={{ keyword }}{% endif %}"
+                   class="btn btn-sm {% if filter_type == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    全部 ({{ all_total }})
+                </a>
+                <a href="{% url 'social:messages' %}?type=unread{% if keyword %}&q={{ keyword }}{% endif %}"
+                   class="btn btn-sm {% if filter_type == 'unread' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    未读 ({{ unread_total }})
+                </a>
+                <a href="{% url 'social:messages' %}?type=activity{% if keyword %}&q={{ keyword }}{% endif %}"
+                   class="btn btn-sm {% if filter_type == 'activity' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    活动通知 ({{ activity_total }})
+                </a>
+                <a href="{% url 'social:messages' %}?type=social{% if keyword %}&q={{ keyword }}{% endif %}"
+                   class="btn btn-sm {% if filter_type == 'social' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    互动消息 ({{ social_total }})
+                </a>
+                <a href="{% url 'social:messages' %}?type=system{% if keyword %}&q={{ keyword }}{% endif %}"
+                   class="btn btn-sm {% if filter_type == 'system' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    系统消息 ({{ system_total }})
+                </a>
+            </div>
+
+            {% if messages_page %}
+                <div class="list-group list-group-flush">
+                    {% for msg in messages_page %}
+                    <div class="list-group-item bg-transparent px-0 py-3 border-bottom" id="message-{{ msg.id }}">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div class="flex-grow-1">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                    {% if msg.message_type == 'activity' %}
+                                        <span class="badge bg-primary">活动</span>
+                                    {% elif msg.message_type == 'like' %}
+                                        <span class="badge bg-danger">点赞</span>
+                                    {% elif msg.message_type == 'comment' %}
+                                        <span class="badge bg-success">评论</span>
+                                    {% elif msg.message_type == 'follow' %}
+                                        <span class="badge bg-info text-dark">关注</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">系统</span>
+                                    {% endif %}
+
+                                    {% if not msg.is_read %}
+                                        <span class="badge bg-warning text-dark">未读</span>
+                                    {% else %}
+                                        <span class="badge bg-light text-dark">已读</span>
+                                    {% endif %}
+                                </div>
+
+                                <h5 class="mb-1">{{ msg.title }}</h5>
+                                <p class="text-muted mb-2">{{ msg.content }}</p>
+
+                                <div class="small text-muted d-flex flex-wrap gap-3">
+                                    <span>
+                                        <i class="fas fa-user me-1"></i>
+                                        {% if msg.sender %}
+                                            {{ msg.sender.username }}
+                                        {% else %}
+                                            系统
+                                        {% endif %}
+                                    </span>
+                                    <span>
+                                        <i class="fas fa-clock me-1"></i>{{ msg.created_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                    {% if msg.related_activity %}
+                                    <span>
+                                        <i class="fas fa-calendar-alt me-1"></i>
+                                        <a href="{% url 'activities:detail' msg.related_activity.id %}" class="text-decoration-none">
+                                            {{ msg.related_activity.title }}
+                                        </a>
+                                    </span>
+                                    {% endif %}
+                                    {% if msg.related_moment %}
+                                    <span>
+                                        <i class="fas fa-comments me-1"></i>
+                                        <a href="{% url 'social:moments' %}" class="text-decoration-none">
+                                            查看相关动态
+                                        </a>
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="d-flex flex-column gap-2">
+                                {% if not msg.is_read %}
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-success mark-read-btn"
+                                    data-id="{{ msg.id }}">
+                                    标记已读
+                                </button>
+                                {% endif %}
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline-danger delete-message-btn"
+                                    data-id="{{ msg.id }}">
+                                    删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if messages_page.has_other_pages %}
+                <nav class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if messages_page.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ messages_page.previous_page_number }}&type={{ filter_type }}{% if keyword %}&q={{ keyword }}{% endif %}">
+                                上一页
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        <li class="page-item disabled">
+                            <span class="page-link">
+                                第 {{ messages_page.number }} / {{ messages_page.paginator.num_pages }} 页
+                            </span>
+                        </li>
+
+                        {% if messages_page.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ messages_page.next_page_number }}&type={{ filter_type }}{% if keyword %}&q={{ keyword }}{% endif %}">
+                                下一页
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">暂无消息</h5>
+                    <p class="text-muted mb-0">当有人点赞、评论或活动审核有结果时，会显示在这里。</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const markAllBtn = document.getElementById('markAllReadBtn');
+
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', function () {
+            fetch("{% url 'social:mark_all_read' %}", {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+        });
+    }
+
+    document.querySelectorAll('.mark-read-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const messageId = this.dataset.id;
+            fetch(`/social/messages/${messageId}/read/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+        });
+    });
+
+    document.querySelectorAll('.delete-message-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const messageId = this.dataset.id;
+            if (!confirm('确定删除这条消息吗？')) return;
+
+            fetch(`/social/messages/${messageId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const row = document.getElementById(`message-${messageId}`);
+                    if (row) row.remove();
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

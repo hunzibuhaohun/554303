@@ -43,6 +43,11 @@ class Activity(models.Model):
         ('ended', '已结束'),
         ('cancelled', '已取消'),
     ]
+    CHECKIN_REVIEW_MODE_CHOICES = [
+        ('auto', '自动通过'),
+        ('manual', '人工审核'),
+        ('risk', '异常审核'),
+    ]
 
     # ==================== 基本信息 ====================
     title = models.CharField('活动标题', max_length=100)
@@ -115,6 +120,13 @@ class Activity(models.Model):
     requirements = models.TextField('参与要求', blank=True)
     allow_checkin_before_start = models.BooleanField('允许开始前打卡', default=False)
     checkin_radius = models.PositiveIntegerField('打卡范围(米)', default=500)
+    checkin_review_mode = models.CharField(
+        '打卡审核模式',
+        max_length=10,
+        choices=CHECKIN_REVIEW_MODE_CHOICES,
+        default='auto',
+        help_text='auto=自动通过，manual=人工审核，risk=异常审核'
+    )
 
     # ==================== 统计字段 ====================
     view_count = models.PositiveIntegerField('浏览次数', default=0)

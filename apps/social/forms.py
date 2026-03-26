@@ -1,22 +1,30 @@
-"""社交表单 - 校园打卡平台"""
 from django import forms
 from .models import Moment, MomentComment
+from apps.activities.models import Activity, ActivityRegistration
 
 
-# ═══════════════════════════════════════════════════
-# 直接在本文件定义自定义 Widget（不依赖外部文件）
-# ═══════════════════════════════════════════════════
 class MultipleFileInput(forms.ClearableFileInput):
-    """支持多文件上传的自定义 Widget"""
     allow_multiple_selected = True
 
 
+class MultipleFileField(forms.FileField):
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+
+        if not data:
+            return []
+
+        if isinstance(data, (list, tuple)):
+            return [single_file_clean(d, initial) for d in data]
+
+        return [single_file_clean(data, initial)]
+
+
 class MomentForm(forms.ModelForm):
-    """发布动态表单"""
-    images = forms.FileField(
+    images = MultipleFileField(
         label='图片',
         required=False,
-        widget=MultipleFileInput(attrs={      # ← 使用上面定义的 MultipleFileInput
+        widget=MultipleFileInput(attrs={
             'class': 'form-control',
             'accept': 'image/*',
             'multiple': True
@@ -32,25 +40,27 @@ class MomentForm(forms.ModelForm):
                 'rows': 4,
                 'placeholder': '分享你的校园生活...'
             }),
-            'activity': forms.Select(attrs={'class': 'form-control'}),
+            'activity': forms.Select(attrs={'class': 'form-select'}),
         }
 
     def __init__(self, user=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['activity'].required = False
+        self.fields['activity'].empty_label = '不关联活动'
+
         if user:
-            from apps.activities.models import ActivityRegistration
-            participated_activities = ActivityRegistration.objects.filter(
+            activity_ids = ActivityRegistration.objects.filter(
                 user=user
-            ).select_related('activity')
-            self.fields['activity'].choices = [('', '不关联活动')] + [
-                (reg.activity.id, reg.activity.title)
-                for reg in participated_activities
-            ]
+            ).values_list('activity_id', flat=True)
+
+            self.fields['activity'].queryset = Activity.objects.filter(
+                id__in=activity_ids
+            ).distinct()
+        else:
+            self.fields['activity'].queryset = Activity.objects.none()
 
 
 class MomentCommentForm(forms.ModelForm):
-    """动态评论表单"""
     class Meta:
         model = MomentComment
         fields = ['content']

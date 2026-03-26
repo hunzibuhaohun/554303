@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             background: white;
             border-radius: 16px;
@@ -104,6 +104,25 @@
             gap: 20px;
         }
 
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            transform: scale(1.2);
+        }
+
+        .help-text {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+        }
+
         .btn-group {
             display: flex;
             gap: 12px;
@@ -154,6 +173,30 @@
         .required::after {
             content: " *";
             color: #ea4335;
+        }
+
+        .current-image {
+            margin-top: 10px;
+        }
+
+        .current-image img {
+            max-width: 220px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .btn-group {
+                flex-direction: column;
+            }
+
+            .form-container {
+                padding: 24px;
+            }
         }
     </style>
 </head>
@@ -241,13 +284,41 @@
 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="{{ form.location_lat.id_for_label }}">纬度（可选）</label>
+                        {{ form.location_lat }}
+                        {% if form.location_lat.errors %}
+                            <div class="error-message">{{ form.location_lat.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.location_lng.id_for_label }}">经度（可选）</label>
+                        {{ form.location_lng }}
+                        {% if form.location_lng.errors %}
+                            <div class="error-message">{{ form.location_lng.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="{{ form.min_participants.id_for_label }}" class="required">最小参与人数</label>
+                        {{ form.min_participants }}
+                        {% if form.min_participants.errors %}
+                            <div class="error-message">{{ form.min_participants.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group">
                         <label for="{{ form.max_participants.id_for_label }}" class="required">最大参与人数</label>
                         {{ form.max_participants }}
                         {% if form.max_participants.errors %}
                             <div class="error-message">{{ form.max_participants.errors }}</div>
                         {% endif %}
                     </div>
+                </div>
 
+                <div class="form-row">
                     <div class="form-group">
                         <label for="{{ form.points.id_for_label }}" class="required">积分奖励</label>
                         {{ form.points }}
@@ -255,6 +326,35 @@
                             <div class="error-message">{{ form.points.errors }}</div>
                         {% endif %}
                     </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.checkin_radius.id_for_label }}" class="required">打卡范围（米）</label>
+                        {{ form.checkin_radius }}
+                        {% if form.checkin_radius.errors %}
+                            <div class="error-message">{{ form.checkin_radius.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.checkin_review_mode.id_for_label }}" class="required">打卡审核模式</label>
+                    {{ form.checkin_review_mode }}
+                    {% if form.checkin_review_mode.errors %}
+                        <div class="error-message">{{ form.checkin_review_mode.errors }}</div>
+                    {% endif %}
+                    <div class="help-text">
+                        自动通过：普通兴趣打卡，提交后直接通过并发放积分。<br>
+                        人工审核：提交后进入待审核，由活动管理员处理。<br>
+                        异常审核：默认自动通过，但定位异常、无照片等情况会进入待审核。
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.requirements.id_for_label }}">参与要求</label>
+                    {{ form.requirements }}
+                    {% if form.requirements.errors %}
+                        <div class="error-message">{{ form.requirements.errors }}</div>
+                    {% endif %}
                 </div>
 
                 <div class="form-group">
@@ -262,6 +362,35 @@
                     {{ form.managers }}
                     {% if form.managers.errors %}
                         <div class="error-message">{{ form.managers.errors }}</div>
+                    {% endif %}
+                    <div class="help-text">
+                        可选，活动管理者可以协助编辑活动、审核打卡和查看活动数据面板。
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>允许开始前打卡</label>
+                    <div class="checkbox-group">
+                        {{ form.allow_checkin_before_start }}
+                        <span>允许参与者在活动开始前完成打卡</span>
+                    </div>
+                    {% if form.allow_checkin_before_start.errors %}
+                        <div class="error-message">{{ form.allow_checkin_before_start.errors }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.cover_image.id_for_label }}">封面图片</label>
+                    {{ form.cover_image }}
+                    {% if form.cover_image.errors %}
+                        <div class="error-message">{{ form.cover_image.errors }}</div>
+                    {% endif %}
+
+                    {% if activity.cover_image %}
+                    <div class="current-image">
+                        <div class="help-text">当前封面：</div>
+                        <img src="{{ activity.cover_image.url }}" alt="{{ activity.title }}">
+                    </div>
                     {% endif %}
                 </div>
 

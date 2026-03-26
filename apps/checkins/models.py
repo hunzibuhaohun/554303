@@ -16,6 +16,7 @@ class CheckIn(models.Model):
         ('pending', '待审核'),
         ('approved', '已通过'),
         ('rejected', '已拒绝'),
+        ('revoked', '已撤销'),
     ]
 
     user = models.ForeignKey(

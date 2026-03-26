@@ -11,8 +11,7 @@
                 <h2>创建新活动</h2>
                 <p class="text-muted">发起一个精彩的活动，邀请同学们一起参与</p>
             </div>
-            
-            <!-- 显示表单错误 -->
+
             {% if form.errors %}
             <div class="alert alert-danger">
                 <h5>请修正以下错误：</h5>
@@ -28,10 +27,10 @@
                 </ul>
             </div>
             {% endif %}
-            
+
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
-                
+
                 <!-- 活动标题和分类 -->
                 <div class="row">
                     <div class="col-md-8 mb-3">
@@ -49,7 +48,7 @@
                         {% endif %}
                     </div>
                 </div>
-                
+
                 <!-- 活动描述 -->
                 <div class="mb-3">
                     <label class="form-label">活动描述 *</label>
@@ -58,7 +57,7 @@
                     <div class="text-danger small">{{ form.description.errors }}</div>
                     {% endif %}
                 </div>
-                
+
                 <!-- 开始时间和结束时间 -->
                 <div class="row">
                     <div class="col-md-6 mb-3">
@@ -76,14 +75,17 @@
                         {% endif %}
                     </div>
                 </div>
-                
+
                 <!-- 报名截止时间 -->
                 <div class="mb-3">
                     <label class="form-label">报名截止时间</label>
                     {{ form.registration_deadline }}
+                    {% if form.registration_deadline.errors %}
+                    <div class="text-danger small">{{ form.registration_deadline.errors }}</div>
+                    {% endif %}
                     <div class="form-text text-muted">不填则默认为活动开始时间</div>
                 </div>
-                
+
                 <!-- 活动地点 -->
                 <div class="mb-3">
                     <label class="form-label">活动地点 *</label>
@@ -92,19 +94,25 @@
                     <div class="text-danger small">{{ form.location.errors }}</div>
                     {% endif %}
                 </div>
-                
+
                 <!-- 经纬度（可选） -->
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">纬度（可选）</label>
                         {{ form.location_lat }}
+                        {% if form.location_lat.errors %}
+                        <div class="text-danger small">{{ form.location_lat.errors }}</div>
+                        {% endif %}
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">经度（可选）</label>
                         {{ form.location_lng }}
+                        {% if form.location_lng.errors %}
+                        <div class="text-danger small">{{ form.location_lng.errors }}</div>
+                        {% endif %}
                     </div>
                 </div>
-                
+
                 <!-- 最小参与人数和最大参与人数 -->
                 <div class="row">
                     <div class="col-md-6 mb-3">
@@ -123,7 +131,7 @@
                         {% endif %}
                     </div>
                 </div>
-                
+
                 <!-- 积分奖励和打卡范围 -->
                 <div class="row">
                     <div class="col-md-6 mb-3">
@@ -135,7 +143,7 @@
                         <div class="form-text text-muted">完成活动获得的积分</div>
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">打卡范围(米) *</label>
+                        <label class="form-label">打卡范围（米） *</label>
                         {{ form.checkin_radius }}
                         {% if form.checkin_radius.errors %}
                         <div class="text-danger small">{{ form.checkin_radius.errors }}</div>
@@ -143,35 +151,60 @@
                         <div class="form-text text-muted">距离活动地点多少米内可以打卡</div>
                     </div>
                 </div>
-                
+
+                <!-- 打卡审核模式 -->
+                <div class="mb-3">
+                    <label class="form-label">打卡审核模式 *</label>
+                    {{ form.checkin_review_mode }}
+                    {% if form.checkin_review_mode.errors %}
+                    <div class="text-danger small">{{ form.checkin_review_mode.errors }}</div>
+                    {% endif %}
+                    <div class="form-text text-muted">
+                        自动通过：普通兴趣打卡，提交后直接通过并发放积分。<br>
+                        人工审核：提交后进入待审核，由活动管理员处理。<br>
+                        异常审核：默认自动通过，但定位异常、无照片等情况会进入待审核。
+                    </div>
+                </div>
+
                 <!-- 参与要求 -->
                 <div class="mb-3">
                     <label class="form-label">参与要求</label>
                     {{ form.requirements }}
+                    {% if form.requirements.errors %}
+                    <div class="text-danger small">{{ form.requirements.errors }}</div>
+                    {% endif %}
                 </div>
+
                 <!-- 活动管理者 -->
                 <div class="mb-3">
-    <label class="form-label">活动管理者（可选）</label>
-    {{ form.managers }}
-    {% if form.managers.errors %}
-        <div class="text-danger small mt-1">
-            {{ form.managers.errors }}
-        </div>
-    {% endif %}
-</div>
-                
+                    <label class="form-label">活动管理者（可选）</label>
+                    {{ form.managers }}
+                    {% if form.managers.errors %}
+                    <div class="text-danger small mt-1">{{ form.managers.errors }}</div>
+                    {% endif %}
+                    <div class="form-text text-muted">
+                        可选，活动管理者可以协助编辑活动、审核打卡和查看活动数据面板。
+                    </div>
+                </div>
+
                 <!-- 允许开始前打卡 -->
                 <div class="mb-3 form-check">
                     {{ form.allow_checkin_before_start }}
                     <label class="form-check-label">允许活动开始前打卡</label>
+                    {% if form.allow_checkin_before_start.errors %}
+                    <div class="text-danger small">{{ form.allow_checkin_before_start.errors }}</div>
+                    {% endif %}
                 </div>
-                
+
                 <!-- 封面图片 -->
                 <div class="mb-3">
                     <label class="form-label">封面图片</label>
                     {{ form.cover_image }}
+                    {% if form.cover_image.errors %}
+                    <div class="text-danger small">{{ form.cover_image.errors }}</div>
+                    {% endif %}
                 </div>
-                
+
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-check me-2"></i>创建活动

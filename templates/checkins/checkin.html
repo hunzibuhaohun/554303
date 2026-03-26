@@ -14,13 +14,13 @@
         overflow: hidden;
         display: none;
     }
-    
+
     #video {
         width: 100%;
         height: auto;
         display: block;
     }
-    
+
     .capture-btn {
         position: absolute;
         bottom: 20px;
@@ -33,7 +33,7 @@
         background: rgba(255, 255, 255, 0.3);
         cursor: pointer;
     }
-    
+
     .capture-btn::after {
         content: '';
         position: absolute;
@@ -45,22 +45,22 @@
         border-radius: 50%;
         background: white;
     }
-    
+
     #canvas {
         display: none;
     }
-    
+
     .photo-preview {
         max-width: 100%;
         max-height: 300px;
         border-radius: 10px;
         margin-top: 10px;
     }
-    
+
     .camera-controls {
         margin-top: 10px;
     }
-    
+
     .location-manual {
         display: none;
         margin-top: 10px;
@@ -80,43 +80,40 @@
                 <h2>活动打卡</h2>
                 <p class="text-muted">记录精彩瞬间，获取积分奖励</p>
             </div>
-            
+
             {% if not registrations %}
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                您还没有报名的活动，<a href="{% url 'activities:list' %}">去报名活动</a>
+                您还没有可打卡的活动，<a href="{% url 'activities:list' %}">去报名活动</a>
             </div>
             {% else %}
             <form method="post" enctype="multipart/form-data" id="checkinForm">
                 {% csrf_token %}
-                
+
+                {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+                {% endif %}
+
                 <!-- 选择活动 -->
                 <div class="mb-4">
                     <label class="form-label">选择活动 *</label>
-                    <select name="activity" class="form-select" required>
-                        <option value="">请选择要打卡的活动</option>
-                        {% for reg in registrations %}
-                        <option value="{{ reg.activity.id }}">
-                            {{ reg.activity.title }} ({{ reg.activity.start_time|date:"m月d日" }})
-                        </option>
-                        {% endfor %}
-                    </select>
+                    {{ form.activity }}
                     {% if form.activity.errors %}
                     <div class="text-danger small">{{ form.activity.errors }}</div>
                     {% endif %}
                 </div>
-                
+
                 <!-- 现场拍照 -->
                 <div class="mb-4">
-                    <label class="form-label">现场拍照 *</label>
-                    
-                    <!-- 摄像头预览区域 -->
+                    <label class="form-label">现场拍照 <small class="text-muted">(可选)</small></label>
+
                     <div class="camera-container mb-3" id="cameraContainer">
                         <video id="video" autoplay playsinline></video>
                         <button type="button" class="capture-btn" onclick="takePhoto()" title="拍照"></button>
                     </div>
-                    
-                    <!-- 控制按钮 -->
+
                     <div class="text-center camera-controls" id="cameraControls">
                         <button type="button" class="btn btn-outline-primary me-2" onclick="startCamera()" id="startBtn">
                             <i class="fas fa-camera me-2"></i>打开摄像头
@@ -128,25 +125,26 @@
                             <i class="fas fa-redo me-2"></i>重新拍照
                         </button>
                     </div>
-                    
-                    <!-- 画布和预览 -->
+
                     <canvas id="canvas"></canvas>
                     <div id="photoPreview" class="mt-3"></div>
-                    
-                    <!-- 隐藏的文件输入 -->
+
                     <input type="file" name="photos" id="photoInput" multiple accept="image/*" style="display: none;">
-                    
-                    {% if form.photos.errors %}
-                    <div class="text-danger small">{{ form.photos.errors }}</div>
-                    {% endif %}
+
+                    <div class="form-text text-muted mt-2">
+                        不上传照片也可以提交打卡。若活动为“异常审核”模式，缺少照片可能会进入待审核。
+                    </div>
                 </div>
-                
+
                 <!-- 打卡备注 -->
                 <div class="mb-4">
                     <label class="form-label">打卡备注</label>
-                    <textarea name="remark" class="form-control" rows="3" placeholder="添加打卡备注（可选）"></textarea>
+                    {{ form.remark }}
+                    {% if form.remark.errors %}
+                    <div class="text-danger small">{{ form.remark.errors }}</div>
+                    {% endif %}
                 </div>
-                
+
                 <!-- 位置信息 -->
                 <div class="mb-4">
                     <label class="form-label">位置信息 <small class="text-muted">(可选)</small></label>
@@ -163,20 +161,19 @@
                             <i class="fas fa-forward"></i> 跳过
                         </button>
                     </div>
-                    
-                    <!-- 手动输入位置 -->
+
                     <div class="location-manual" id="manualLocation">
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <label class="form-label small">纬度</label>
-                                <input type="number" step="any" class="form-control" id="manualLat" placeholder="如: 39.9042" onchange="updateManualLocation()">
+                                <input type="number" step="any" class="form-control" id="manualLat" placeholder="如: 39.9042">
                             </div>
                             <div class="col-md-6 mb-2">
                                 <label class="form-label small">经度</label>
-                                <input type="number" step="any" class="form-control" id="manualLng" placeholder="如: 116.4074" onchange="updateManualLocation()">
+                                <input type="number" step="any" class="form-control" id="manualLng" placeholder="如: 116.4074">
                             </div>
                         </div>
-                        <small class="text-muted">提示：您可以在地图应用中获取当前位置的经纬度，或点击"跳过"使用默认位置</small>
+                        <small class="text-muted">提示：可以手动输入经纬度，或直接跳过位置。</small>
                         <div class="mt-2">
                             <button type="button" class="btn btn-sm btn-primary" onclick="confirmManualLocation()">
                                 <i class="fas fa-check"></i> 确认位置
@@ -186,19 +183,19 @@
                             </button>
                         </div>
                     </div>
-                    
-                    <input type="hidden" name="latitude" id="latitude" value="0">
-                    <input type="hidden" name="longitude" id="longitude" value="0">
-                    <input type="hidden" name="accuracy" id="accuracy" value="9999">
-                    <input type="hidden" name="location_name" id="location_name" value="未获取位置">
-                    
-                    {% if form.latitude.errors or form.longitude.errors %}
+
+                    {{ form.latitude }}
+                    {{ form.longitude }}
+                    {{ form.accuracy }}
+                    {{ form.location_name }}
+
+                    {% if form.latitude.errors or form.longitude.errors or form.accuracy.errors or form.location_name.errors %}
                     <div class="text-danger small">位置信息错误</div>
                     {% endif %}
                 </div>
-                
+
                 <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                    <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
                         <i class="fas fa-check me-2"></i>提交打卡
                     </button>
                     <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-lg">
@@ -215,46 +212,39 @@
 {% block extra_js %}
 <script>
 let stream = null;
-let video = document.getElementById('video');
-let canvas = document.getElementById('canvas');
-let photoInput = document.getElementById('photoInput');
-let submitBtn = document.getElementById('submitBtn');
-let cameraContainer = document.getElementById('cameraContainer');
-let startBtn = document.getElementById('startBtn');
-let closeBtn = document.getElementById('closeBtn');
-let retakeBtn = document.getElementById('retakeBtn');
-let photoPreview = document.getElementById('photoPreview');
-let locationStatus = document.getElementById('locationStatus');
-let locationText = document.getElementById('locationText');
-let retryBtn = document.getElementById('retryBtn');
-let manualBtn = document.getElementById('manualBtn');
-let skipBtn = document.getElementById('skipBtn');
-let manualLocation = document.getElementById('manualLocation');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const photoInput = document.getElementById('photoInput');
+const submitBtn = document.getElementById('submitBtn');
+const cameraContainer = document.getElementById('cameraContainer');
+const startBtn = document.getElementById('startBtn');
+const closeBtn = document.getElementById('closeBtn');
+const retakeBtn = document.getElementById('retakeBtn');
+const photoPreview = document.getElementById('photoPreview');
+const locationStatus = document.getElementById('locationStatus');
+const locationText = document.getElementById('locationText');
+const retryBtn = document.getElementById('retryBtn');
+const manualBtn = document.getElementById('manualBtn');
+const skipBtn = document.getElementById('skipBtn');
+const manualLocation = document.getElementById('manualLocation');
 
-let hasPhoto = false;
-let hasLocation = false;
-let locationError = false;
-
-// 打开摄像头
 function startCamera() {
-    navigator.mediaDevices.getUserMedia({ 
-        video: { 
+    navigator.mediaDevices.getUserMedia({
+        video: {
             facingMode: 'environment',
             width: { ideal: 1280 },
             height: { ideal: 720 }
-        } 
+        }
     })
     .then(function(mediaStream) {
         stream = mediaStream;
         video.srcObject = stream;
-        
+
         cameraContainer.style.display = 'block';
         startBtn.style.display = 'none';
         closeBtn.style.display = 'inline-block';
         retakeBtn.style.display = 'none';
         photoPreview.innerHTML = '';
-        
-        updateSubmitButton();
     })
     .catch(function(err) {
         console.error("无法访问摄像头:", err);
@@ -262,50 +252,38 @@ function startCamera() {
     });
 }
 
-// 关闭摄像头
 function closeCamera() {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
     }
-    
+
     video.srcObject = null;
     cameraContainer.style.display = 'none';
     startBtn.style.display = 'inline-block';
     closeBtn.style.display = 'none';
     retakeBtn.style.display = 'none';
-    
-    if (!hasPhoto) {
-        photoPreview.innerHTML = '';
-        photoInput.value = '';
-        hasPhoto = false;
-        updateSubmitButton();
-    }
 }
 
-// 拍照
 function takePhoto() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    let imageDataUrl = canvas.toDataURL('image/jpeg');
-    
+
+    const imageDataUrl = canvas.toDataURL('image/jpeg');
+
     photoPreview.innerHTML = `
         <img src="${imageDataUrl}" class="photo-preview" alt="拍照预览">
         <p class="text-success mt-2"><i class="fas fa-check-circle"></i> 照片已拍摄</p>
     `;
-    
+
     canvas.toBlob(function(blob) {
-        let file = new File([blob], "checkin_" + Date.now() + ".jpg", { type: "image/jpeg" });
-        let dataTransfer = new DataTransfer();
+        const file = new File([blob], "checkin_" + Date.now() + ".jpg", { type: "image/jpeg" });
+        const dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
         photoInput.files = dataTransfer.files;
-        
-        hasPhoto = true;
-        updateSubmitButton();
     }, 'image/jpeg');
-    
+
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
@@ -316,41 +294,33 @@ function takePhoto() {
     retakeBtn.style.display = 'inline-block';
 }
 
-// 重新拍照
 function retakePhoto() {
     photoPreview.innerHTML = '';
     photoInput.value = '';
-    hasPhoto = false;
-    updateSubmitButton();
     startCamera();
 }
 
-// 获取位置
 function getLocation() {
     if (!("geolocation" in navigator)) {
         showLocationError('浏览器不支持地理定位');
         return;
     }
-    
+
     locationText.innerHTML = '正在获取位置...';
     retryBtn.style.display = 'none';
     manualBtn.style.display = 'none';
     skipBtn.style.display = 'none';
-    
+
     navigator.geolocation.getCurrentPosition(
         function(position) {
-            document.getElementById('latitude').value = position.coords.latitude;
-            document.getElementById('longitude').value = position.coords.longitude;
-            document.getElementById('accuracy').value = position.coords.accuracy;
-            document.getElementById('location_name').value = 'GPS定位';
-            
-            let accuracyText = Math.round(position.coords.accuracy) < 100 ? '高精度' : `精度约${Math.round(position.coords.accuracy)}米`;
+            document.getElementById('id_latitude').value = position.coords.latitude;
+            document.getElementById('id_longitude').value = position.coords.longitude;
+            document.getElementById('id_accuracy').value = position.coords.accuracy;
+            document.getElementById('id_location_name').value = 'GPS定位';
+
+            const accuracyText = Math.round(position.coords.accuracy) < 100 ? '高精度' : `精度约${Math.round(position.coords.accuracy)}米`;
             locationStatus.className = 'alert alert-success';
             locationText.innerHTML = `<i class="fas fa-check-circle me-2"></i>位置已获取 (${accuracyText})`;
-            
-            hasLocation = true;
-            locationError = false;
-            updateSubmitButton();
         },
         function(error) {
             console.error("获取位置失败:", error);
@@ -378,26 +348,18 @@ function getLocation() {
     );
 }
 
-// 显示位置错误
 function showLocationError(msg) {
     locationStatus.className = 'alert alert-warning';
     locationText.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${msg}`;
     retryBtn.style.display = 'inline-block';
     manualBtn.style.display = 'inline-block';
     skipBtn.style.display = 'inline-block';
-    
-    hasLocation = false;
-    locationError = true;
-    // 位置是可选的，仍然可以打卡
-    updateSubmitButton();
 }
 
-// 重试获取位置
 function retryLocation() {
     getLocation();
 }
 
-// 切换手动输入位置
 function toggleManualLocation() {
     if (manualLocation.style.display === 'none' || manualLocation.style.display === '') {
         manualLocation.style.display = 'block';
@@ -406,93 +368,66 @@ function toggleManualLocation() {
     }
 }
 
-// 更新手动位置
-function updateManualLocation() {
-    let lat = document.getElementById('manualLat').value;
-    let lng = document.getElementById('manualLng').value;
-    
-    if (lat && lng) {
-        document.getElementById('latitude').value = lat;
-        document.getElementById('longitude').value = lng;
-        document.getElementById('accuracy').value = 100;
-        document.getElementById('location_name').value = '手动定位';
-    }
-}
-
-// 确认手动位置
 function confirmManualLocation() {
-    let lat = document.getElementById('manualLat').value;
-    let lng = document.getElementById('manualLng').value;
-    
+    const lat = document.getElementById('manualLat').value;
+    const lng = document.getElementById('manualLng').value;
+
     if (!lat || !lng) {
         alert('请输入完整的经纬度');
         return;
     }
-    
+
+    document.getElementById('id_latitude').value = lat;
+    document.getElementById('id_longitude').value = lng;
+    document.getElementById('id_accuracy').value = 100;
+    document.getElementById('id_location_name').value = '手动定位';
+
     locationStatus.className = 'alert alert-info';
     locationText.innerHTML = `<i class="fas fa-info-circle me-2"></i>已手动设置位置`;
     manualLocation.style.display = 'none';
-    
-    hasLocation = true;
-    locationError = false;
-    updateSubmitButton();
 }
 
-// 取消手动位置
 function cancelManualLocation() {
     manualLocation.style.display = 'none';
 }
 
-// 跳过位置获取
 function skipLocation() {
-    document.getElementById('latitude').value = '0';
-    document.getElementById('longitude').value = '0';
-    document.getElementById('accuracy').value = '9999';
-    document.getElementById('location_name').value = '未获取位置';
-    
+    document.getElementById('id_latitude').value = '0';
+    document.getElementById('id_longitude').value = '0';
+    document.getElementById('id_accuracy').value = '9999';
+    document.getElementById('id_location_name').value = '未获取位置';
+
     locationStatus.className = 'alert alert-secondary';
     locationText.innerHTML = `<i class="fas fa-forward me-2"></i>已跳过位置获取`;
     retryBtn.style.display = 'none';
     manualBtn.style.display = 'none';
     skipBtn.style.display = 'none';
     manualLocation.style.display = 'none';
-    
-    hasLocation = true; // 标记为已处理（使用默认值）
-    locationError = false;
-    updateSubmitButton();
 }
 
-// 更新提交按钮状态
-function updateSubmitButton() {
-    // 只需要照片即可打卡，位置是可选的（有默认值）
-    submitBtn.disabled = !hasPhoto;
+const checkinForm = document.getElementById('checkinForm');
+if (checkinForm) {
+    checkinForm.addEventListener('submit', function() {
+        if (!document.getElementById('id_latitude').value) {
+            document.getElementById('id_latitude').value = '0';
+        }
+        if (!document.getElementById('id_longitude').value) {
+            document.getElementById('id_longitude').value = '0';
+        }
+        if (!document.getElementById('id_accuracy').value) {
+            document.getElementById('id_accuracy').value = '9999';
+        }
+        if (!document.getElementById('id_location_name').value) {
+            document.getElementById('id_location_name').value = '未获取位置';
+        }
+    });
 }
 
-// 页面加载时获取位置
 getLocation();
 
-// 页面卸载时关闭摄像头
 window.addEventListener('beforeunload', function() {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
-    }
-});
-
-// 表单验证 - 只检查照片
-document.getElementById('checkinForm').addEventListener('submit', function(e) {
-    if (!photoInput.files || photoInput.files.length === 0) {
-        e.preventDefault();
-        alert('请先拍照');
-        return false;
-    }
-    
-    // 位置是可选的，不阻止提交
-    // 如果没有位置，使用默认值 0,0
-    if (!document.getElementById('latitude').value) {
-        document.getElementById('latitude').value = '0';
-    }
-    if (!document.getElementById('longitude').value) {
-        document.getElementById('longitude').value = '0';
     }
 });
 </script>

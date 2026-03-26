@@ -4,93 +4,71 @@
 
 {% block content %}
 <div class="glass-card mb-4">
-    <h2><i class="fas fa-chart-bar text-primary me-2"></i>数据中心</h2>
-    <p class="text-muted">实时查看平台数据统计</p>
-</div>
-
-<!-- 统计卡片 -->
-<div class="row mb-4">
-    <div class="col-md-3 mb-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h6 class="card-title">总用户数</h6>
-                        <h3 class="mb-0">{{ user_stats.total_users }}</h3>
-                    </div>
-                    <i class="fas fa-users fa-3x opacity-50"></i>
-                </div>
-                <small>今日新增: {{ user_stats.new_users_today }}</small>
-            </div>
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center">
+        <div>
+            <h2 class="mb-2">
+                <i class="fas fa-chart-bar text-primary me-2"></i>{{ page_title }}
+            </h2>
+            <p class="text-muted mb-0">{{ page_subtitle }}</p>
         </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h6 class="card-title">总活动数</h6>
-                        <h3 class="mb-0">{{ activity_stats.total_activities }}</h3>
-                    </div>
-                    <i class="fas fa-calendar-alt fa-3x opacity-50"></i>
-                </div>
-                <small>进行中: {{ activity_stats.ongoing_activities }}</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card bg-info text-white">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h6 class="card-title">总打卡数</h6>
-                        <h3 class="mb-0">{{ checkin_stats.total_checkins }}</h3>
-                    </div>
-                    <i class="fas fa-check-circle fa-3x opacity-50"></i>
-                </div>
-                <small>今日: {{ checkin_stats.checkins_today }}</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card bg-warning text-dark">
-            <div class="card-body">
-                <div class="d-flex justify-content-between">
-                    <div>
-                        <h6 class="card-title">总积分</h6>
-                        <h3 class="mb-0">{{ checkin_stats.total_points }}</h3>
-                    </div>
-                    <i class="fas fa-coins fa-3x opacity-50"></i>
-                </div>
-                <small>累计发放</small>
-            </div>
-        </div>
+        <span class="badge rounded-pill {{ scope_badge_class }} mt-3 mt-lg-0 px-3 py-2">
+            {{ scope_badge }}
+        </span>
     </div>
 </div>
 
-<!-- 图表区域 -->
+{% if not is_platform_admin and visible_activity_count == 0 %}
+<div class="alert alert-info mb-4">
+    <i class="fas fa-circle-info me-2"></i>
+    你当前还没有负责的活动，所以这里暂时没有可展示的数据。
+</div>
+{% endif %}
+
 <div class="row mb-4">
+    {% for card in summary_cards %}
+    <div class="col-md-6 col-xl-3 mb-3">
+        <div class="card bg-{{ card.color }} {% if card.dark_text %}text-dark{% else %}text-white{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">{{ card.title }}</h6>
+                        <h3 class="mb-0">{{ card.value }}</h3>
+                    </div>
+                    <i class="fas {{ card.icon }} fa-3x opacity-50"></i>
+                </div>
+                <small>{{ card.subtitle }}</small>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="row mb-4">
+    {% for chart in chart_config %}
     <div class="col-lg-6 mb-4">
         <div class="glass-card h-100">
-            <h5 class="mb-3">近7天打卡趋势</h5>
-            <canvas id="checkinChart"></canvas>
+            <h5 class="mb-3">{{ chart.title }}</h5>
+            <canvas
+                id="{{ chart.id }}"
+                class="chart-canvas"
+                data-chart-type="{{ chart.type }}"
+                data-chart-title="{{ chart.title }}"
+            ></canvas>
         </div>
     </div>
-    <div class="col-lg-6 mb-4">
-        <div class="glass-card h-100">
-            <h5 class="mb-3">活动分类分布</h5>
-            <canvas id="categoryChart"></canvas>
-        </div>
-    </div>
+    {% endfor %}
 </div>
 
-<!-- 排行榜 -->
 <div class="row">
     <div class="col-lg-6 mb-4">
         <div class="glass-card">
-            <h5 class="mb-3"><i class="fas fa-trophy text-warning me-2"></i>积分排行榜</h5>
+            <h5 class="mb-3">
+                <i class="fas fa-trophy text-warning me-2"></i>{{ ranking_title }}
+            </h5>
+
+            {% if ranking_users %}
             <div class="list-group list-group-flush">
-                {% for u in top_users|slice:":10" %}
+                {% for u in ranking_users %}
                 <div class="list-group-item bg-transparent px-0 d-flex align-items-center">
                     <div class="me-3">
                         {% if forloop.counter <= 3 %}
@@ -99,19 +77,29 @@
                         <span class="badge bg-light text-dark">{{ forloop.counter }}</span>
                         {% endif %}
                     </div>
+
                     <div class="flex-grow-1">
                         <h6 class="mb-0">{{ u.username }}</h6>
                         <small class="text-muted">{{ u.department|default:'' }}</small>
                     </div>
+
                     <span class="badge bg-warning text-dark">{{ u.points }}分</span>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="text-muted mb-0">暂无排行数据。</p>
+            {% endif %}
         </div>
     </div>
+
     <div class="col-lg-6 mb-4">
         <div class="glass-card">
-            <h5 class="mb-3"><i class="fas fa-fire text-danger me-2"></i>热门活动</h5>
+            <h5 class="mb-3">
+                <i class="fas fa-fire text-danger me-2"></i>{{ activity_list_title }}
+            </h5>
+
+            {% if hot_activities %}
             <div class="list-group list-group-flush">
                 {% for activity in hot_activities %}
                 <div class="list-group-item bg-transparent px-0">
@@ -122,13 +110,16 @@
                                     {{ activity.title }}
                                 </a>
                             </h6>
-                            <small class="text-muted">{{ activity.participants.count }}人参与</small>
+                            <small class="text-muted">{{ activity.participant_count }} 人参与</small>
                         </div>
                         <span class="badge bg-primary">+{{ activity.points }}分</span>
                     </div>
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="text-muted mb-0">暂无活动数据。</p>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -136,52 +127,114 @@
 
 {% block extra_js %}
 <script>
-// 打卡趋势图
-fetch('/dashboard/api/chart-data/?type=checkin_trend')
-    .then(response => response.json())
-    .then(data => {
-        new Chart(document.getElementById('checkinChart'), {
-            type: 'line',
-            data: {
-                labels: data.labels,
-                datasets: [{
-                    label: '打卡次数',
-                    data: data.data,
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
+(function () {
+    const chartUrl = "{% url 'dashboard:chart_data' %}";
+
+    function buildChartConfig(chartType, payload) {
+        if (chartType === 'checkin_trend' || chartType === 'user_growth') {
+            return {
+                type: 'line',
+                data: {
+                    labels: payload.labels,
+                    datasets: [{
+                        label: payload.title,
+                        data: payload.data,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.10)',
+                        fill: true,
+                        tension: 0.35
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
                     }
                 }
-            }
-        });
-    });
+            };
+        }
 
-// 分类分布图
-fetch('/dashboard/api/chart-data/?type=activity_category')
-    .then(response => response.json())
-    .then(data => {
-        new Chart(document.getElementById('categoryChart'), {
-            type: 'doughnut',
-            data: {
-                labels: data.labels,
-                datasets: [{
-                    data: data.data,
-                    backgroundColor: [
-                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true
-            }
-        });
+        if (chartType === 'activity_category') {
+            return {
+                type: 'doughnut',
+                data: {
+                    labels: payload.labels,
+                    datasets: [{
+                        data: payload.data,
+                        backgroundColor: [
+                            '#3B82F6', '#10B981', '#F59E0B',
+                            '#EF4444', '#8B5CF6', '#EC4899'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true
+                }
+            };
+        }
+
+        if (chartType === 'points_distribution') {
+            return {
+                type: 'bar',
+                data: {
+                    labels: payload.labels,
+                    datasets: [{
+                        label: payload.title,
+                        data: payload.data,
+                        backgroundColor: '#10B981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            };
+        }
+
+        return null;
+    }
+
+    function renderEmptyMessage(canvas, message) {
+        const wrapper = canvas.parentElement;
+        canvas.style.display = 'none';
+
+        const tip = document.createElement('p');
+        tip.className = 'text-muted mb-0';
+        tip.textContent = message;
+        wrapper.appendChild(tip);
+    }
+
+    document.querySelectorAll('.chart-canvas').forEach(function (canvas) {
+        const chartType = canvas.dataset.chartType;
+
+        fetch(`${chartUrl}?type=${chartType}`)
+            .then(async function (response) {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '获取图表数据失败');
+                }
+                return data;
+            })
+            .then(function (payload) {
+                if (!payload.labels || payload.labels.length === 0) {
+                    renderEmptyMessage(canvas, '暂无图表数据');
+                    return;
+                }
+
+                const config = buildChartConfig(chartType, payload);
+                if (!config) {
+                    renderEmptyMessage(canvas, '暂不支持该图表');
+                    return;
+                }
+
+                new Chart(canvas, config);
+            })
+            .catch(function (error) {
+                renderEmptyMessage(canvas, error.message || '加载失败');
+            });
     });
+})();
 </script>
 {% endblock %}

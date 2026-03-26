@@ -2,8 +2,10 @@
 打卡表单 - 校园打卡平台
 """
 from django import forms
-from .models import CheckIn, CheckInPhoto
-from apps.activities.models import Activity, ActivityRegistration
+from django.utils import timezone
+
+from .models import CheckIn
+from apps.activities.models import ActivityRegistration
 
 
 class CheckInForm(forms.ModelForm):
@@ -29,26 +31,26 @@ class CheckInForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
 
-        # 动态设置活动选项
+        # 活动选项：允许 registered / checked_in 状态继续参与校验
         if user:
             registrations = ActivityRegistration.objects.filter(
                 user=user,
-                status='registered'
+                status__in=['registered', 'checked_in']
             ).select_related('activity')
 
-            self.fields['activity'].choices = [
+            self.fields['activity'].choices = [('', '请选择要打卡的活动')] + [
                 (reg.activity.id, f"{reg.activity.title} ({reg.activity.start_time.strftime('%m月%d日')})")
                 for reg in registrations
             ]
 
-        # 必填字段
         self.fields['activity'].required = True
 
-        # 位置改为可选
+        # 位置可选
         self.fields['latitude'].required = False
         self.fields['longitude'].required = False
         self.fields['accuracy'].required = False
         self.fields['location_name'].required = False
+        self.fields['remark'].required = False
 
     def clean(self):
         cleaned_data = super().clean()
@@ -59,8 +61,9 @@ class CheckInForm(forms.ModelForm):
         if not activity:
             raise forms.ValidationError('请选择活动')
 
-        # 位置可选：只有在只填了一半时才报错
-        if (latitude is None and longitude is not None) or (latitude is not None and longitude is None):
+        # 经纬度只允许“都为空”或“都存在”
+        if (latitude in [None, ''] and longitude not in [None, '']) or \
+           (longitude in [None, ''] and latitude not in [None, '']):
             raise forms.ValidationError('位置信息不完整，请同时提供经纬度，或直接跳过定位')
 
         # 验证用户是否报名了该活动
@@ -68,19 +71,18 @@ class CheckInForm(forms.ModelForm):
             registration = ActivityRegistration.objects.get(
                 user=self.user,
                 activity=activity,
-                status='registered'
+                status__in=['registered', 'checked_in']
             )
             cleaned_data['registration'] = registration
         except ActivityRegistration.DoesNotExist:
-            raise forms.ValidationError('您没有报名此活动或已打卡')
+            raise forms.ValidationError('您没有报名此活动或当前状态不可打卡')
 
         # 检查今天是否已打卡
-        from django.utils import timezone
         if CheckIn.objects.filter(
-            user=self.user,
-            activity=activity,
-            check_in_date=timezone.now().date()
-        ).exists():
+                user=self.user,
+                activity=activity,
+                check_in_date=timezone.now().date()
+        ).exclude(status='revoked').exists():
             raise forms.ValidationError('您今天已经打过卡了')
 
         return cleaned_data
@@ -90,7 +92,7 @@ class CheckInForm(forms.ModelForm):
         checkin.user = self.user
         checkin.registration = self.cleaned_data['registration']
 
-        # 如果前端跳过定位，给默认值
+        # 位置默认值
         if checkin.latitude in [None, '']:
             checkin.latitude = 0
         if checkin.longitude in [None, '']:
