@@ -2,90 +2,384 @@
 活动视图 - 校园打卡平台
 """
 import csv
-from urllib.parse import urlencode
+import io
 from datetime import timedelta
-from apps.checkins.utils import calculate_continuous_days, award_points
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib.auth.decorators import login_required
+
 from django.contrib import messages
-from django.db.models import Q, F, Count, Sum
-from django.utils import timezone
+from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import JsonResponse,HttpResponse
+from django.db import transaction
+from django.db.models import Q, F, Count, Sum
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import Activity, Category, ActivityRegistration, ActivityComment
-from .forms import ActivityForm, ActivityCommentForm
-from apps.checkins.models import CheckIn
-from apps.social.models import Moment,Message
-from django.db import transaction
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
+from apps.checkins.models import CheckIn
+from apps.checkins.utils import calculate_continuous_days, award_points
+from apps.social.models import Moment, Message
+
+from .forms import ActivityForm, ActivityCommentForm
+from .models import Activity, Category, ActivityRegistration, ActivityComment
+
+
+# =========================
+# 通用辅助函数
+# =========================
+def _can_manage_activity(user, activity):
+    """活动创建者 / 活动管理员 / 总管理员 可管理该活动"""
+    if not user or not user.is_authenticated:
+        return False
+    return activity.can_edit(user) or activity.can_close(user)
+
+
+def _management_permission_denied(request, activity, message='您没有权限管理此活动。'):
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': False, 'message': message}, status=403)
+    messages.error(request, message)
+    return redirect('activities:detail', pk=activity.pk)
+
+
+def _export_permission_denied(request, activity, message='您没有权限导出此活动数据。'):
+    messages.error(request, message)
+    return redirect('activities:detail', pk=activity.pk)
+
+
+def _filtered_get_params(querydict, exclude_keys=None):
+    exclude_keys = exclude_keys or []
+    data = querydict.copy()
+    for key in exclude_keys:
+        if key in data:
+            del data[key]
+    return data.urlencode()
+
+
+def _get_participant_queryset(activity, keyword='', status=''):
+    qs = ActivityRegistration.objects.filter(
+        activity=activity
+    ).select_related('user').order_by('-registered_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(user__real_name__icontains=keyword) |
+            Q(user__department__icontains=keyword)
+        )
+
+    if status:
+        qs = qs.filter(status=status)
+
+    return qs
+
+
+def _get_checkin_queryset(activity, keyword='', status=''):
+    qs = CheckIn.objects.filter(
+        activity=activity
+    ).select_related(
+        'user', 'reviewed_by'
+    ).prefetch_related(
+        'photos'
+    ).order_by('-created_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(user__real_name__icontains=keyword) |
+            Q(remark__icontains=keyword) |
+            Q(review_note__icontains=keyword) |
+            Q(location_name__icontains=keyword)
+        )
+
+    if status:
+        qs = qs.filter(status=status)
+
+    return qs
+
+
+def _get_moment_queryset(activity, keyword=''):
+    qs = Moment.objects.filter(
+        activity=activity
+    ).select_related('user').prefetch_related('images').annotate(
+        like_count=Count('likes', distinct=True),
+        comment_count=Count('comments', distinct=True)
+    ).order_by('-created_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(content__icontains=keyword)
+        )
+
+    return qs
+
+
+def _get_comment_queryset(activity, keyword=''):
+    qs = activity.comments.select_related('user').order_by('-created_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(content__icontains=keyword)
+        )
+
+    return qs
+
+
+def _build_activity_management_data(activity, request):
+    participant_keyword = request.GET.get('participant_q', '').strip()
+    participant_status = request.GET.get('participant_status', '').strip()
+    participant_page_number = request.GET.get('participant_page')
+
+    checkin_keyword = request.GET.get('checkin_q', '').strip()
+    checkin_status = request.GET.get('checkin_status', '').strip()
+    checkin_page_number = request.GET.get('checkin_page')
+
+    moment_keyword = request.GET.get('moment_q', '').strip()
+    moment_page_number = request.GET.get('moment_page')
+
+    comment_keyword = request.GET.get('comment_q', '').strip()
+    comment_page_number = request.GET.get('comment_page')
+
+    participant_page = Paginator(
+        _get_participant_queryset(activity, participant_keyword, participant_status), 8
+    ).get_page(participant_page_number)
+
+    checkin_page = Paginator(
+        _get_checkin_queryset(activity, checkin_keyword, checkin_status), 8
+    ).get_page(checkin_page_number)
+
+    moment_page = Paginator(
+        _get_moment_queryset(activity, moment_keyword), 6
+    ).get_page(moment_page_number)
+
+    comment_page = Paginator(
+        _get_comment_queryset(activity, comment_keyword), 6
+    ).get_page(comment_page_number)
+
+    return {
+        'participant_page': participant_page,
+        'participant_keyword': participant_keyword,
+        'participant_status': participant_status,
+        'participant_querystring': _filtered_get_params(request.GET, ['participant_page']),
+
+        'checkin_page': checkin_page,
+        'checkin_keyword': checkin_keyword,
+        'checkin_status': checkin_status,
+        'checkin_querystring': _filtered_get_params(request.GET, ['checkin_page']),
+
+        'moment_page': moment_page,
+        'moment_keyword': moment_keyword,
+        'moment_querystring': _filtered_get_params(request.GET, ['moment_page']),
+
+        'comment_page': comment_page,
+        'comment_keyword': comment_keyword,
+        'comment_querystring': _filtered_get_params(request.GET, ['comment_page']),
+    }
+
+
+def _build_participant_action_json(activity, registration):
+    registrations = ActivityRegistration.objects.filter(activity=activity).select_related('user')
+    active_registrations = registrations.exclude(status='cancelled')
+
+    total_registrations = active_registrations.count()
+    registered_count = active_registrations.filter(status='registered').count()
+    checked_in_count = active_registrations.filter(status='checked_in').count()
+    completed_count = active_registrations.filter(status='completed').count()
+    cancelled_count = registrations.filter(status='cancelled').count()
+
+    fill_rate = 0
+    if activity.max_participants:
+        fill_rate = round((total_registrations / activity.max_participants) * 100, 1)
+
+    completion_rate = 0
+    if total_registrations:
+        completion_rate = round((completed_count / total_registrations) * 100, 1)
+
+    top_participants_qs = active_registrations.order_by('-user__points', '-registered_at')[:10]
+    top_participants = [
+        {
+            'username': reg.user.username,
+            'department': reg.user.department or '未填写院系',
+            'points': reg.user.points,
+            'status_display': reg.get_status_display(),
+        }
+        for reg in top_participants_qs
+    ]
+
+    return {
+        'success': True,
+        'registration': {
+            'id': registration.id,
+            'status': registration.status,
+            'status_display': registration.get_status_display(),
+        },
+        'stats': {
+            'total_registrations': total_registrations,
+            'registered_count': registered_count,
+            'checked_in_count': checked_in_count,
+            'completed_count': completed_count,
+            'cancelled_count': cancelled_count,
+            'fill_rate': fill_rate,
+            'completion_rate': completion_rate,
+        },
+        'top_participants': top_participants,
+    }
+
+
+def _build_checkin_action_json(activity, checkin):
+    approved_qs = CheckIn.objects.filter(activity=activity, status='approved')
+
+    return {
+        'success': True,
+        'checkin': {
+            'id': checkin.id,
+            'status': checkin.status,
+            'status_display': checkin.get_status_display(),
+            'points_earned': checkin.points_earned,
+            'review_note': checkin.review_note or '',
+            'reviewer_username': checkin.reviewed_by.username if checkin.reviewed_by else '',
+            'revoke_url': reverse('activities:manage_checkin_revoke', args=[activity.id, checkin.id]),
+        },
+        'stats': {
+            'approved': CheckIn.objects.filter(activity=activity, status='approved').count(),
+            'pending': CheckIn.objects.filter(activity=activity, status='pending').count(),
+            'rejected': CheckIn.objects.filter(activity=activity, status='rejected').count(),
+            'revoked': CheckIn.objects.filter(activity=activity, status='revoked').count(),
+            'total_points_sent': approved_qs.aggregate(total=Sum('points_earned'))['total'] or 0,
+        }
+    }
+
+
+def _build_excel_response(sheet_title, headers, rows, filename, report_title='', filter_lines=None):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_title[:31]
+
+    total_cols = len(headers)
+    current_row = 1
+
+    if report_title:
+        ws.cell(row=current_row, column=1, value=report_title)
+        ws.merge_cells(
+            start_row=current_row,
+            start_column=1,
+            end_row=current_row,
+            end_column=total_cols
+        )
+        ws.cell(row=current_row, column=1).font = Font(bold=True, size=14)
+        ws.cell(row=current_row, column=1).alignment = Alignment(horizontal='center', vertical='center')
+        current_row += 1
+
+    filter_lines = filter_lines or []
+    for line in filter_lines:
+        ws.cell(row=current_row, column=1, value=line)
+        ws.merge_cells(
+            start_row=current_row,
+            start_column=1,
+            end_row=current_row,
+            end_column=total_cols
+        )
+        ws.cell(row=current_row, column=1).alignment = Alignment(horizontal='left', vertical='center')
+        current_row += 1
+
+    if report_title or filter_lines:
+        current_row += 1
+
+    header_row = current_row
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    for row in rows:
+        current_row += 1
+        for col_idx, value in enumerate(row, start=1):
+            ws.cell(row=current_row, column=col_idx, value=value)
+
+    ws.freeze_panes = f'A{header_row + 1}'
+    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(total_cols)}{header_row}"
+
+    for col_idx in range(1, total_cols + 1):
+        max_length = 0
+        col_letter = get_column_letter(col_idx)
+        for row_idx in range(1, current_row + 1):
+            value = ws.cell(row=row_idx, column=col_idx).value
+            value_str = '' if value is None else str(value)
+            max_length = max(max_length, len(value_str))
+        ws.column_dimensions[col_letter].width = min(max(max_length + 2, 12), 40)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    response = HttpResponse(
+        output.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+# =========================
+# 页面视图
+# =========================
 def activity_list(request):
     """活动列表视图"""
-
-    # 先同步活动状态
     now = timezone.now()
 
-    # 已结束
     Activity.objects.exclude(status='cancelled').filter(
         end_time__lt=now
     ).exclude(status='ended').update(status='ended')
 
-    # 进行中
     Activity.objects.exclude(status='cancelled').filter(
         start_time__lte=now,
         end_time__gte=now
     ).exclude(status='ongoing').update(status='ongoing')
 
-    # 即将开始
     Activity.objects.exclude(status='cancelled').filter(
         start_time__gt=now
     ).exclude(status='upcoming').update(status='upcoming')
 
-    # 先取全部活动
     activities = Activity.objects.all().select_related(
         'category', 'creator'
     ).prefetch_related('participants')
 
-    # 搜索
     q = request.GET.get('q')
     if q:
         activities = activities.filter(
             Q(title__icontains=q) | Q(location__icontains=q)
         )
 
-    # 分类筛选
     category_id = request.GET.get('category')
     if category_id:
         activities = activities.filter(category_id=category_id)
 
-    # 状态筛选
     status = request.GET.get('status', '')
     if status == 'all':
         pass
     elif status:
         activities = activities.filter(status=status)
     else:
-        # 默认只显示即将开始和进行中的活动
         activities = activities.filter(status__in=['upcoming', 'ongoing'])
 
-    # 仅显示可报名
     if request.GET.get('available_only'):
         activities = activities.filter(
             participants__lt=F('max_participants'),
             status='upcoming'
         )
 
-    # 排序
     sort = request.GET.get('sort', '-created_at')
     activities = activities.order_by(sort)
 
-    # 分页
     paginator = Paginator(activities, 9)
     page = request.GET.get('page')
     activities = paginator.get_page(page)
 
-    # 保留查询参数
     query_params = ''
     if request.GET:
         params = request.GET.copy()
@@ -106,6 +400,7 @@ def activity_list(request):
     }
     return render(request, 'activities/list.html', context)
 
+
 def activity_detail(request, pk):
     """活动详情视图"""
     activity = get_object_or_404(
@@ -114,15 +409,12 @@ def activity_detail(request, pk):
         pk=pk
     )
 
-    # 同步当前活动状态
     activity.update_status()
     activity.refresh_from_db()
 
-    # 增加浏览次数
     activity.view_count += 1
     activity.save(update_fields=['view_count'])
 
-    # 当前用户报名与权限
     is_registered = False
     can_checkin = False
     registration = None
@@ -148,11 +440,8 @@ def activity_detail(request, pk):
         can_edit_activity = activity.can_edit(request.user)
         can_delete_activity = activity.can_delete(request.user)
         can_close_activity = activity.can_close(request.user)
-
-        # 创建者 / 活动管理者 / 总管理员 可看单活动数据面板
         can_view_activity_dashboard = can_edit_activity or can_close_activity
 
-    # 相关活动推荐
     related_activities = Activity.objects.filter(
         category=activity.category,
         status__in=['upcoming', 'ongoing']
@@ -160,7 +449,6 @@ def activity_detail(request, pk):
 
     comment_form = ActivityCommentForm()
 
-    # 单活动数据面板默认值
     activity_dashboard = None
     top_participants = []
     recent_participants = []
@@ -170,22 +458,18 @@ def activity_detail(request, pk):
     recent_moments = []
     recent_activity_comments = []
 
-    # 关键：先给 management_data 默认值，避免普通用户访问时报错
     management_data = {
         'participant_page': None,
         'participant_keyword': '',
         'participant_status': '',
         'participant_querystring': '',
-
         'checkin_page': None,
         'checkin_keyword': '',
         'checkin_status': '',
         'checkin_querystring': '',
-
         'moment_page': None,
         'moment_keyword': '',
         'moment_querystring': '',
-
         'comment_page': None,
         'comment_keyword': '',
         'comment_querystring': '',
@@ -235,17 +519,9 @@ def activity_detail(request, pk):
         total_activity_comments = activity.comments.count()
         total_view_count = activity.view_count
 
-        fill_rate = 0
-        if activity.max_participants:
-            fill_rate = round((total_registrations / activity.max_participants) * 100, 1)
-
-        checkin_rate = 0
-        if total_registrations:
-            checkin_rate = round((approved_count / total_registrations) * 100, 1)
-
-        completion_rate = 0
-        if total_registrations:
-            completion_rate = round((completed_count / total_registrations) * 100, 1)
+        fill_rate = round((total_registrations / activity.max_participants) * 100, 1) if activity.max_participants else 0
+        checkin_rate = round((approved_count / total_registrations) * 100, 1) if total_registrations else 0
+        completion_rate = round((completed_count / total_registrations) * 100, 1) if total_registrations else 0
 
         today = timezone.now().date()
         trend_labels = []
@@ -255,12 +531,8 @@ def activity_detail(request, pk):
         for i in range(6, -1, -1):
             date = today - timedelta(days=i)
             trend_labels.append(date.strftime('%m-%d'))
-            registration_trend_data.append(
-                registrations.filter(registered_at__date=date).count()
-            )
-            checkin_trend_data.append(
-                approved_checkins_qs.filter(created_at__date=date).count()
-            )
+            registration_trend_data.append(registrations.filter(registered_at__date=date).count())
+            checkin_trend_data.append(approved_checkins_qs.filter(created_at__date=date).count())
 
         activity_dashboard = {
             'total_registrations': total_registrations,
@@ -333,483 +605,6 @@ def activity_detail(request, pk):
     }
     return render(request, 'activities/detail.html', context)
 
-def _can_manage_activity(user, activity):
-    """活动创建者 / 活动管理员 / 总管理员 可管理该活动"""
-    if not user or not user.is_authenticated:
-        return False
-    return activity.can_edit(user) or activity.can_close(user)
-
-def _filtered_get_params(querydict, exclude_keys=None):
-    exclude_keys = exclude_keys or []
-    data = querydict.copy()
-    for key in exclude_keys:
-        if key in data:
-            del data[key]
-    return data.urlencode()
-
-
-def _build_activity_management_data(activity, request):
-    # ===== 参与者 =====
-    participant_keyword = request.GET.get('participant_q', '').strip()
-    participant_status = request.GET.get('participant_status', '').strip()
-    participant_page_number = request.GET.get('participant_page')
-
-    participant_qs = ActivityRegistration.objects.filter(
-        activity=activity
-    ).select_related('user').order_by('-registered_at')
-
-    if participant_keyword:
-        participant_qs = participant_qs.filter(
-            Q(user__username__icontains=participant_keyword) |
-            Q(user__real_name__icontains=participant_keyword) |
-            Q(user__department__icontains=participant_keyword)
-        )
-
-    if participant_status:
-        participant_qs = participant_qs.filter(status=participant_status)
-
-    participant_paginator = Paginator(participant_qs, 8)
-    participant_page = participant_paginator.get_page(participant_page_number)
-
-    # ===== 打卡 =====
-    checkin_keyword = request.GET.get('checkin_q', '').strip()
-    checkin_status = request.GET.get('checkin_status', '').strip()
-    checkin_page_number = request.GET.get('checkin_page')
-
-    checkin_qs = CheckIn.objects.filter(
-        activity=activity
-    ).select_related('user', 'reviewed_by').order_by('-created_at')
-
-    if checkin_keyword:
-        checkin_qs = checkin_qs.filter(
-            Q(user__username__icontains=checkin_keyword) |
-            Q(user__real_name__icontains=checkin_keyword) |
-            Q(remark__icontains=checkin_keyword)
-        )
-
-    if checkin_status:
-        checkin_qs = checkin_qs.filter(status=checkin_status)
-
-    checkin_paginator = Paginator(checkin_qs, 8)
-    checkin_page = checkin_paginator.get_page(checkin_page_number)
-
-    # ===== 社交：动态 =====
-    moment_keyword = request.GET.get('moment_q', '').strip()
-    moment_page_number = request.GET.get('moment_page')
-
-    moment_qs = Moment.objects.filter(
-        activity=activity
-    ).select_related('user').annotate(
-        like_count=Count('likes', distinct=True)
-    ).order_by('-created_at')
-
-    if moment_keyword:
-        moment_qs = moment_qs.filter(
-            Q(user__username__icontains=moment_keyword) |
-            Q(content__icontains=moment_keyword)
-        )
-
-    moment_paginator = Paginator(moment_qs, 6)
-    moment_page = moment_paginator.get_page(moment_page_number)
-
-    # ===== 社交：评论 =====
-    comment_keyword = request.GET.get('comment_q', '').strip()
-    comment_page_number = request.GET.get('comment_page')
-
-    comment_qs = activity.comments.select_related('user').order_by('-created_at')
-
-    if comment_keyword:
-        comment_qs = comment_qs.filter(
-            Q(user__username__icontains=comment_keyword) |
-            Q(content__icontains=comment_keyword)
-        )
-
-    comment_paginator = Paginator(comment_qs, 6)
-    comment_page = comment_paginator.get_page(comment_page_number)
-
-    return {
-        'participant_page': participant_page,
-        'participant_keyword': participant_keyword,
-        'participant_status': participant_status,
-        'participant_querystring': _filtered_get_params(
-            request.GET, ['participant_page']
-        ),
-
-        'checkin_page': checkin_page,
-        'checkin_keyword': checkin_keyword,
-        'checkin_status': checkin_status,
-        'checkin_querystring': _filtered_get_params(
-            request.GET, ['checkin_page']
-        ),
-
-        'moment_page': moment_page,
-        'moment_keyword': moment_keyword,
-        'moment_querystring': _filtered_get_params(
-            request.GET, ['moment_page']
-        ),
-
-        'comment_page': comment_page,
-        'comment_keyword': comment_keyword,
-        'comment_querystring': _filtered_get_params(
-            request.GET, ['comment_page']
-        ),
-    }
-
-
-@login_required
-@require_POST
-def manage_registration_cancel(request, pk, registration_id):
-    """活动管理员取消某个报名"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    registration = get_object_or_404(
-        ActivityRegistration,
-        pk=registration_id,
-        activity=activity
-    )
-
-    if registration.status == 'cancelled':
-        messages.warning(request, '该报名已是取消状态。')
-        return redirect('activities:detail', pk=pk)
-
-    # 已完成的报名不再允许直接取消，避免数据混乱
-    if registration.status == 'completed':
-        messages.error(request, '已完成的报名不能直接取消。')
-        return redirect('activities:detail', pk=pk)
-
-    with transaction.atomic():
-        registration.status = 'cancelled'
-        registration.save(update_fields=['status'])
-
-        # 如果存在待审核打卡，顺带驳回，避免报名取消后仍挂着待审核记录
-        if hasattr(registration, 'checkin') and registration.checkin.status == 'pending':
-            registration.checkin.reject(
-                reviewer=request.user,
-                note='报名已被活动管理员取消'
-            )
-
-    messages.success(request, f'已取消 {registration.user.username} 的报名。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_registration_complete(request, pk, registration_id):
-    """活动管理员手动标记报名完成"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    registration = get_object_or_404(
-        ActivityRegistration,
-        pk=registration_id,
-        activity=activity
-    )
-
-    if registration.status == 'completed':
-        messages.warning(request, '该报名已经是完成状态。')
-        return redirect('activities:detail', pk=pk)
-
-    if registration.status == 'cancelled':
-        messages.error(request, '已取消的报名不能标记为完成。')
-        return redirect('activities:detail', pk=pk)
-
-    registration.status = 'completed'
-    registration.save(update_fields=['status'])
-
-    messages.success(request, f'已将 {registration.user.username} 标记为完成。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_checkin_approve(request, pk, checkin_id):
-    """活动管理员审核通过打卡"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(
-        CheckIn,
-        pk=checkin_id,
-        activity=activity
-    )
-
-    if checkin.status != 'pending':
-        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
-        return redirect('activities:detail', pk=pk)
-
-    review_note = request.POST.get('note', '').strip() or '活动管理员审核通过'
-
-    with transaction.atomic():
-        checkin.status = 'approved'
-        checkin.reviewed_by = request.user
-        checkin.review_note = review_note
-        checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
-
-        streak = calculate_continuous_days(checkin.user, checkin.activity)
-        points = award_points(
-            checkin.user,
-            activity=activity,
-            streak_days=streak,
-            related_checkin=checkin
-        )
-
-        checkin.points_earned = points
-        checkin.save(update_fields=['points_earned'])
-
-        checkin.registration.status = 'completed'
-        checkin.registration.save(update_fields=['status'])
-
-        Message.objects.create(
-            recipient=checkin.user,
-            sender=request.user,
-            message_type='activity',
-            title='打卡审核已通过',
-            content=(
-                f'你在活动《{activity.title}》中的打卡已审核通过，'
-                f'获得 {points} 积分。备注：{review_note}'
-            ),
-            related_activity=activity
-        )
-
-    messages.success(request, f'已通过 {checkin.user.username} 的打卡申请。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_checkin_reject(request, pk, checkin_id):
-    """活动管理员驳回打卡"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(
-        CheckIn,
-        pk=checkin_id,
-        activity=activity
-    )
-
-    if checkin.status != 'pending':
-        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
-        return redirect('activities:detail', pk=pk)
-
-    review_note = request.POST.get('note', '').strip() or '活动管理员审核拒绝'
-
-    checkin.status = 'rejected'
-    checkin.reviewed_by = request.user
-    checkin.review_note = review_note
-    checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
-
-    checkin.registration.status = 'registered'
-    checkin.registration.save(update_fields=['status'])
-
-    Message.objects.create(
-        recipient=checkin.user,
-        sender=request.user,
-        message_type='activity',
-        title='打卡审核未通过',
-        content=(
-            f'你在活动《{activity.title}》中的打卡未通过审核。'
-            f'原因：{review_note}'
-        ),
-        related_activity=activity
-    )
-
-    messages.success(request, f'已拒绝 {checkin.user.username} 的打卡申请。')
-    return redirect('activities:detail', pk=pk)
-
-@login_required
-@require_POST
-def manage_checkin_revoke(request, pk, checkin_id):
-    """活动管理员撤销已通过打卡，并回收积分"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(
-        CheckIn.objects.select_related('user', 'registration', 'activity'),
-        pk=checkin_id,
-        activity=activity
-    )
-
-    if checkin.status != 'approved':
-        messages.warning(request, '只有已通过的打卡才能撤销。')
-        return redirect('activities:detail', pk=pk)
-
-    revoke_note = request.POST.get('note', '').strip() or '活动管理员撤销通过'
-
-    with transaction.atomic():
-        deducted_points = int(checkin.points_earned or 0)
-
-        # 回收积分
-        if deducted_points > 0:
-            checkin.user.add_points(
-                -deducted_points,
-                description=f'撤销活动《{activity.title}》打卡积分：{revoke_note}'
-            )
-
-        # 打卡状态改成 revoked
-        checkin.status = 'revoked'
-        checkin.reviewed_by = request.user
-        checkin.review_note = f'撤销通过：{revoke_note}'
-        checkin.points_earned = 0
-        checkin.save(update_fields=['status', 'reviewed_by', 'review_note', 'points_earned'])
-
-        # 报名状态退回 registered，允许后续重新打卡/重新审核
-        checkin.registration.status = 'registered'
-        checkin.registration.save(update_fields=['status'])
-
-        Message.objects.create(
-            recipient=checkin.user,
-            sender=request.user,
-            message_type='activity',
-            title='打卡通过已被撤销',
-            content=(
-                f'你在活动《{activity.title}》中的已通过打卡已被管理员撤销。'
-                f'原因：{revoke_note}。'
-                f'已回收积分：{deducted_points} 分。'
-            ),
-            related_activity=activity
-        )
-
-    messages.success(
-        request,
-        f'已撤销 {checkin.user.username} 的通过打卡，并回收 {deducted_points} 积分。'
-    )
-    return redirect('activities:detail', pk=pk)
-
-@login_required
-def export_activity_participants_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    participant_keyword = request.GET.get('participant_q', '').strip()
-    participant_status = request.GET.get('participant_status', '').strip()
-
-    qs = ActivityRegistration.objects.filter(activity=activity).select_related('user').order_by('-registered_at')
-
-    if participant_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=participant_keyword) |
-            Q(user__real_name__icontains=participant_keyword) |
-            Q(user__department__icontains=participant_keyword)
-        )
-
-    if participant_status:
-        qs = qs.filter(status=participant_status)
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_participants.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['用户名', '姓名', '院系', '状态', '报名时间'])
-
-    for reg in qs:
-        writer.writerow([
-            reg.user.username,
-            reg.user.real_name,
-            reg.user.department,
-            reg.get_status_display(),
-            reg.registered_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
-
-
-@login_required
-def export_activity_checkins_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin_keyword = request.GET.get('checkin_q', '').strip()
-    checkin_status = request.GET.get('checkin_status', '').strip()
-
-    qs = CheckIn.objects.filter(activity=activity).select_related('user', 'reviewed_by').order_by('-created_at')
-
-    if checkin_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=checkin_keyword) |
-            Q(user__real_name__icontains=checkin_keyword) |
-            Q(remark__icontains=checkin_keyword)
-        )
-
-    if checkin_status:
-        qs = qs.filter(status=checkin_status)
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_checkins.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['用户名', '状态', '备注', '审核备注', '积分', '打卡时间'])
-
-    for checkin in qs:
-        writer.writerow([
-            checkin.user.username,
-            checkin.get_status_display(),
-            checkin.remark,
-            checkin.review_note,
-            checkin.points_earned,
-            checkin.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
-
-
-@login_required
-def export_activity_moments_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    moment_keyword = request.GET.get('moment_q', '').strip()
-
-    qs = Moment.objects.filter(activity=activity).select_related('user').annotate(
-        like_count=Count('likes', distinct=True)
-    ).order_by('-created_at')
-
-    if moment_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=moment_keyword) |
-            Q(content__icontains=moment_keyword)
-        )
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_moments.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['发布者', '内容', '点赞数', '发布时间'])
-
-    for moment in qs:
-        writer.writerow([
-            moment.user.username,
-            moment.content,
-            moment.like_count,
-            moment.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
 
 @login_required
 def activity_create(request):
@@ -820,18 +615,16 @@ def activity_create(request):
             activity = form.save(commit=False)
             activity.creator = request.user
             activity.save()
-            form.save_m2m()  # 保存 managers 多对多关系（前提：模型和表单已添加 managers）
+            form.save_m2m()
             messages.success(request, '活动创建成功！')
             return redirect('activities:detail', pk=activity.pk)
-        else:
-            messages.error(request, '创建失败，请检查填写信息。')
+        messages.error(request, '创建失败，请检查填写信息。')
     else:
         form = ActivityForm()
 
-    categories = Category.objects.all()
     return render(request, 'activities/create.html', {
         'form': form,
-        'categories': categories
+        'categories': Category.objects.all()
     })
 
 
@@ -850,19 +643,18 @@ def activity_edit(request, pk):
             form.save()
             messages.success(request, '活动更新成功！')
             return redirect('activities:detail', pk=pk)
-        else:
-            print("===== form.errors.as_json =====")
-            print(form.errors.as_json())
-            print("===== form.non_field_errors =====")
-            print(form.non_field_errors())
-            messages.error(request, '更新失败，请检查填写信息。')
+
+        print("===== form.errors.as_json =====")
+        print(form.errors.as_json())
+        print("===== form.non_field_errors =====")
+        print(form.non_field_errors())
+        messages.error(request, '更新失败，请检查填写信息。')
     else:
         form = ActivityForm(instance=activity)
 
-    categories = Category.objects.all()
     return render(request, 'activities/edit.html', {
         'form': form,
-        'categories': categories,
+        'categories': Category.objects.all(),
         'activity': activity
     })
 
@@ -903,43 +695,34 @@ def close_activity(request, pk):
     return redirect('activities:detail', pk=pk)
 
 
-
 @login_required
 @require_POST
 def join_activity(request, pk):
     """报名参加活动"""
     activity = get_object_or_404(Activity, pk=pk)
 
-    # 活动已满员
     if activity.is_full:
         messages.error(request, '活动已满员')
         return redirect('activities:detail', pk=pk)
 
-    # 只有即将开始的活动才能报名
     if activity.status != 'upcoming':
         messages.error(request, '活动当前不在报名阶段')
         return redirect('activities:detail', pk=pk)
 
-    # 防止重复报名
     if ActivityRegistration.objects.filter(user=request.user, activity=activity).exists():
         messages.warning(request, '您已经报名了此活动')
         return redirect('activities:detail', pk=pk)
 
-    # 创建报名记录
-    ActivityRegistration.objects.create(
-        user=request.user,
-        activity=activity
-    )
+    ActivityRegistration.objects.create(user=request.user, activity=activity)
 
     messages.success(request, f'报名成功！本活动可获得 {activity.points} 积分')
     return redirect('activities:detail', pk=pk)
 
 
-
 @login_required
 @require_POST
 def cancel_registration(request, pk):
-    """取消报名"""
+    """用户自己取消报名"""
     activity = get_object_or_404(Activity, pk=pk)
 
     registration = ActivityRegistration.objects.filter(
@@ -986,19 +769,14 @@ def my_activities(request):
 
     if activity_type == 'created':
         activities = Activity.objects.filter(creator=request.user)
-
     elif activity_type == 'joined':
-        # 报名成功 / 已打卡 / 已完成都算“我参加的活动”
         activities = Activity.objects.filter(
             participants__user=request.user,
             participants__status__in=['registered', 'checked_in', 'completed']
         ).distinct()
-
     elif activity_type == 'checked':
-        from apps.checkins.models import CheckIn
         activity_ids = CheckIn.objects.filter(user=request.user).values_list('activity_id', flat=True)
         activities = Activity.objects.filter(id__in=activity_ids)
-
     else:
         activities = Activity.objects.filter(creator=request.user)
 
@@ -1009,9 +787,574 @@ def my_activities(request):
     })
 
 
-# ═══════════════════════════════════════════════════
-# DRF ViewSet - 用于API路由
-# ═══════════════════════════════════════════════════
+# =========================
+# 管理动作：参与者
+# =========================
+@login_required
+@require_POST
+def manage_registration_cancel(request, pk, registration_id):
+    """活动管理员取消某个报名"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    registration = get_object_or_404(
+        ActivityRegistration,
+        pk=registration_id,
+        activity=activity
+    )
+
+    if registration.status == 'cancelled':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '该报名已是取消状态。'}, status=400)
+        messages.warning(request, '该报名已是取消状态。')
+        return redirect('activities:detail', pk=pk)
+
+    if registration.status == 'completed':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '已完成的报名不能直接取消。'}, status=400)
+        messages.error(request, '已完成的报名不能直接取消。')
+        return redirect('activities:detail', pk=pk)
+
+    with transaction.atomic():
+        registration.status = 'cancelled'
+        registration.save(update_fields=['status'])
+
+        try:
+            related_checkin = registration.checkin
+        except CheckIn.DoesNotExist:
+            related_checkin = None
+
+        if related_checkin and related_checkin.status == 'pending':
+            related_checkin.status = 'rejected'
+            related_checkin.reviewed_by = request.user
+            related_checkin.review_note = '报名已被活动管理员取消'
+            related_checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = _build_participant_action_json(activity, registration)
+        payload['message'] = f'已取消 {registration.user.username} 的报名。'
+        return JsonResponse(payload)
+
+    messages.success(request, f'已取消 {registration.user.username} 的报名。')
+    return redirect('activities:detail', pk=pk)
+
+
+@login_required
+@require_POST
+def manage_registration_complete(request, pk, registration_id):
+    """活动管理员手动标记报名完成"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    registration = get_object_or_404(
+        ActivityRegistration,
+        pk=registration_id,
+        activity=activity
+    )
+
+    if registration.status == 'completed':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '该报名已经是完成状态。'}, status=400)
+        messages.warning(request, '该报名已经是完成状态。')
+        return redirect('activities:detail', pk=pk)
+
+    if registration.status == 'cancelled':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '已取消的报名不能标记为完成。'}, status=400)
+        messages.error(request, '已取消的报名不能标记为完成。')
+        return redirect('activities:detail', pk=pk)
+
+    registration.status = 'completed'
+    registration.save(update_fields=['status'])
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = _build_participant_action_json(activity, registration)
+        payload['message'] = f'已将 {registration.user.username} 标记为完成。'
+        return JsonResponse(payload)
+
+    messages.success(request, f'已将 {registration.user.username} 标记为完成。')
+    return redirect('activities:detail', pk=pk)
+
+
+# =========================
+# 管理动作：打卡
+# =========================
+@login_required
+@require_POST
+def manage_checkin_approve(request, pk, checkin_id):
+    """活动管理员审核通过打卡"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    checkin = get_object_or_404(CheckIn, pk=checkin_id, activity=activity)
+
+    if checkin.status != 'pending':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '该打卡不是待审核状态，无法重复处理。'}, status=400)
+        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
+        return redirect('activities:detail', pk=pk)
+
+    review_note = request.POST.get('note', '').strip() or '活动管理员审核通过'
+
+    with transaction.atomic():
+        checkin.status = 'approved'
+        checkin.reviewed_by = request.user
+        checkin.review_note = review_note
+        checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
+
+        streak = calculate_continuous_days(checkin.user, checkin.activity)
+        points = award_points(
+            checkin.user,
+            activity=activity,
+            streak_days=streak,
+            related_checkin=checkin
+        )
+
+        checkin.points_earned = points
+        checkin.save(update_fields=['points_earned'])
+
+        checkin.registration.status = 'completed'
+        checkin.registration.save(update_fields=['status'])
+
+        Message.objects.create(
+            recipient=checkin.user,
+            sender=request.user,
+            message_type='activity',
+            title='打卡审核已通过',
+            content=f'你在活动《{activity.title}》中的打卡已审核通过，获得 {points} 积分。备注：{review_note}',
+            related_activity=activity
+        )
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = _build_checkin_action_json(activity, checkin)
+        payload['message'] = f'已通过 {checkin.user.username} 的打卡申请。'
+        return JsonResponse(payload)
+
+    messages.success(request, f'已通过 {checkin.user.username} 的打卡申请。')
+    return redirect('activities:detail', pk=pk)
+
+
+@login_required
+@require_POST
+def manage_checkin_reject(request, pk, checkin_id):
+    """活动管理员驳回打卡"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    checkin = get_object_or_404(CheckIn, pk=checkin_id, activity=activity)
+
+    if checkin.status != 'pending':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '该打卡不是待审核状态，无法重复处理。'}, status=400)
+        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
+        return redirect('activities:detail', pk=pk)
+
+    review_note = request.POST.get('note', '').strip() or '活动管理员审核拒绝'
+
+    checkin.status = 'rejected'
+    checkin.reviewed_by = request.user
+    checkin.review_note = review_note
+    checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
+
+    checkin.registration.status = 'registered'
+    checkin.registration.save(update_fields=['status'])
+
+    Message.objects.create(
+        recipient=checkin.user,
+        sender=request.user,
+        message_type='activity',
+        title='打卡审核未通过',
+        content=f'你在活动《{activity.title}》中的打卡未通过审核。原因：{review_note}',
+        related_activity=activity
+    )
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = _build_checkin_action_json(activity, checkin)
+        payload['message'] = f'已拒绝 {checkin.user.username} 的打卡申请。'
+        return JsonResponse(payload)
+
+    messages.success(request, f'已拒绝 {checkin.user.username} 的打卡申请。')
+    return redirect('activities:detail', pk=pk)
+
+
+@login_required
+@require_POST
+def manage_checkin_revoke(request, pk, checkin_id):
+    """活动管理员撤销已通过打卡，并回收积分"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    checkin = get_object_or_404(
+        CheckIn.objects.select_related('user', 'registration', 'activity'),
+        pk=checkin_id,
+        activity=activity
+    )
+
+    if checkin.status != 'approved':
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': False, 'message': '只有已通过的打卡才能撤销。'}, status=400)
+        messages.warning(request, '只有已通过的打卡才能撤销。')
+        return redirect('activities:detail', pk=pk)
+
+    revoke_note = request.POST.get('note', '').strip() or '活动管理员撤销通过'
+
+    with transaction.atomic():
+        deducted_points = int(checkin.points_earned or 0)
+
+        if deducted_points > 0:
+            checkin.user.add_points(
+                -deducted_points,
+                description=f'撤销活动《{activity.title}》打卡积分：{revoke_note}'
+            )
+
+        checkin.status = 'revoked'
+        checkin.reviewed_by = request.user
+        checkin.review_note = f'撤销通过：{revoke_note}'
+        checkin.points_earned = 0
+        checkin.save(update_fields=['status', 'reviewed_by', 'review_note', 'points_earned'])
+
+        checkin.registration.status = 'registered'
+        checkin.registration.save(update_fields=['status'])
+
+        Message.objects.create(
+            recipient=checkin.user,
+            sender=request.user,
+            message_type='activity',
+            title='打卡通过已被撤销',
+            content=f'你在活动《{activity.title}》中的已通过打卡已被管理员撤销。原因：{revoke_note}。已回收积分：{deducted_points} 分。',
+            related_activity=activity
+        )
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        payload = _build_checkin_action_json(activity, checkin)
+        payload['message'] = f'已撤销 {checkin.user.username} 的通过打卡，并回收 {deducted_points} 积分。'
+        return JsonResponse(payload)
+
+    messages.success(request, f'已撤销 {checkin.user.username} 的通过打卡，并回收 {deducted_points} 积分。')
+    return redirect('activities:detail', pk=pk)
+
+
+# =========================
+# 管理动作：社交
+# =========================
+@login_required
+@require_POST
+def manage_moment_delete(request, pk, moment_id):
+    """活动管理员删除关联动态（支持 AJAX 局部刷新）"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    moment = get_object_or_404(
+        Moment.objects.select_related('user'),
+        pk=moment_id,
+        activity=activity
+    )
+
+    owner = moment.user
+    preview = (moment.content or '')[:40]
+    moment.delete()
+
+    if owner != request.user:
+        Message.objects.create(
+            recipient=owner,
+            sender=request.user,
+            message_type='activity',
+            title='关联动态已被管理员删除',
+            content=f'你在活动《{activity.title}》中的动态已被管理员删除。内容片段：{preview}',
+            related_activity=activity
+        )
+
+    remaining_moment_count = Moment.objects.filter(activity=activity).count()
+    remaining_like_count = Moment.objects.filter(activity=activity).aggregate(
+        total=Count('likes', distinct=True)
+    )['total'] or 0
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'message': f'已删除 {owner.username} 的关联动态。',
+            'moment_id': moment_id,
+            'moment_count': remaining_moment_count,
+            'moment_like_count': remaining_like_count,
+        })
+
+    messages.success(request, f'已删除 {owner.username} 的关联动态。')
+    return redirect(f"{reverse('activities:detail', args=[pk])}#social-pane")
+
+
+@login_required
+@require_POST
+def manage_activity_comment_delete(request, pk, comment_id):
+    """活动管理员删除活动评论（支持 AJAX 局部刷新）"""
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _management_permission_denied(request, activity)
+
+    comment = get_object_or_404(
+        ActivityComment.objects.select_related('user'),
+        pk=comment_id,
+        activity=activity
+    )
+
+    owner = comment.user
+    preview = (comment.content or '')[:40]
+    comment.delete()
+
+    if owner != request.user:
+        Message.objects.create(
+            recipient=owner,
+            sender=request.user,
+            message_type='activity',
+            title='活动评论已被管理员删除',
+            content=f'你在活动《{activity.title}》中的评论已被管理员删除。内容片段：{preview}',
+            related_activity=activity
+        )
+
+    remaining_comment_count = activity.comments.count()
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'message': f'已删除 {owner.username} 的活动评论。',
+            'comment_id': comment_id,
+            'activity_comment_count': remaining_comment_count,
+        })
+
+    messages.success(request, f'已删除 {owner.username} 的活动评论。')
+    return redirect(f"{reverse('activities:detail', args=[pk])}#social-pane")
+
+
+# =========================
+# 导出：CSV
+# =========================
+@login_required
+def export_activity_participants_csv(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('participant_q', '').strip()
+    status = request.GET.get('participant_status', '').strip()
+    qs = _get_participant_queryset(activity, keyword, status)
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_participants.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['用户名', '姓名', '院系', '状态', '报名时间'])
+
+    for reg in qs:
+        writer.writerow([
+            reg.user.username,
+            reg.user.real_name,
+            reg.user.department,
+            reg.get_status_display(),
+            reg.registered_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return response
+
+
+@login_required
+def export_activity_checkins_csv(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('checkin_q', '').strip()
+    status = request.GET.get('checkin_status', '').strip()
+    qs = _get_checkin_queryset(activity, keyword, status)
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_checkins.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['用户名', '状态', '备注', '审核备注', '积分', '打卡时间'])
+
+    for checkin in qs:
+        writer.writerow([
+            checkin.user.username,
+            checkin.get_status_display(),
+            checkin.remark,
+            checkin.review_note,
+            checkin.points_earned,
+            checkin.created_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return response
+
+
+@login_required
+def export_activity_moments_csv(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('moment_q', '').strip()
+    qs = _get_moment_queryset(activity, keyword)
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_moments.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['发布者', '内容', '点赞数', '评论数', '图片数', '发布时间'])
+
+    for moment in qs:
+        writer.writerow([
+            moment.user.username,
+            moment.content,
+            moment.like_count,
+            moment.comment_count,
+            moment.images.count(),
+            moment.created_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return response
+
+
+# =========================
+# 导出：Excel
+# =========================
+@login_required
+def export_activity_participants_excel(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('participant_q', '').strip()
+    status = request.GET.get('participant_status', '').strip()
+    qs = _get_participant_queryset(activity, keyword, status)
+
+    status_display_map = dict(ActivityRegistration.STATUS_CHOICES)
+    filter_lines = [
+        f'活动：{activity.title}',
+        f'关键词：{keyword or "无"}',
+        f'状态：{status_display_map.get(status, "全部") if status else "全部"}',
+        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    ]
+
+    rows = []
+    for reg in qs:
+        rows.append([
+            reg.user.username,
+            reg.user.real_name or '',
+            reg.user.department or '',
+            reg.get_status_display(),
+            reg.registered_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return _build_excel_response(
+        sheet_title='参与者',
+        headers=['用户名', '姓名', '院系', '状态', '报名时间'],
+        rows=rows,
+        filename=f'activity_{activity.id}_participants.xlsx',
+        report_title='活动参与者导出',
+        filter_lines=filter_lines
+    )
+
+
+@login_required
+def export_activity_checkins_excel(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('checkin_q', '').strip()
+    status = request.GET.get('checkin_status', '').strip()
+    qs = _get_checkin_queryset(activity, keyword, status)
+
+    status_display_map = dict(CheckIn.STATUS_CHOICES)
+    filter_lines = [
+        f'活动：{activity.title}',
+        f'关键词：{keyword or "无"}',
+        f'状态：{status_display_map.get(status, "全部") if status else "全部"}',
+        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    ]
+
+    rows = []
+    for checkin in qs:
+        rows.append([
+            checkin.user.username,
+            checkin.get_status_display(),
+            checkin.remark or '',
+            checkin.location_name or '',
+            f'{checkin.latitude}, {checkin.longitude}',
+            checkin.accuracy,
+            checkin.reviewed_by.username if checkin.reviewed_by else '',
+            checkin.review_note or '',
+            checkin.points_earned,
+            checkin.photos.count(),
+            checkin.created_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return _build_excel_response(
+        sheet_title='打卡记录',
+        headers=['用户名', '状态', '打卡备注', '位置名称', '经纬度', '定位精度(米)', '审核人', '系统/审核备注', '积分', '照片数', '打卡时间'],
+        rows=rows,
+        filename=f'activity_{activity.id}_checkins.xlsx',
+        report_title='活动打卡记录导出',
+        filter_lines=filter_lines
+    )
+
+
+@login_required
+def export_activity_moments_excel(request, pk):
+    activity = get_object_or_404(Activity, pk=pk)
+
+    if not _can_manage_activity(request.user, activity):
+        return _export_permission_denied(request, activity)
+
+    keyword = request.GET.get('moment_q', '').strip()
+    qs = _get_moment_queryset(activity, keyword)
+
+    filter_lines = [
+        f'活动：{activity.title}',
+        f'关键词：{keyword or "无"}',
+        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
+    ]
+
+    rows = []
+    for moment in qs:
+        rows.append([
+            moment.user.username,
+            moment.content,
+            moment.like_count,
+            moment.comment_count,
+            moment.images.count(),
+            moment.created_at.strftime('%Y-%m-%d %H:%M'),
+        ])
+
+    return _build_excel_response(
+        sheet_title='关联动态',
+        headers=['发布者', '内容', '点赞数', '评论数', '图片数', '发布时间'],
+        rows=rows,
+        filename=f'activity_{activity.id}_moments.xlsx',
+        report_title='活动关联动态导出',
+        filter_lines=filter_lines
+    )
+
+
+# =========================
+# DRF ViewSet
+# =========================
 from rest_framework import viewsets, permissions
 from .serializers import ActivitySerializer, ActivityRegistrationSerializer
 
@@ -1023,7 +1366,6 @@ class ActivityViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        """创建时自动设置创建者"""
         serializer.save(creator=self.request.user)
 
 
@@ -1034,9 +1376,7 @@ class ActivityRegistrationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """只返回当前用户的报名记录"""
         return ActivityRegistration.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        """创建时自动设置用户"""
         serializer.save(user=self.request.user)

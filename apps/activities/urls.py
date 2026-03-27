@@ -33,6 +33,18 @@ urlpatterns = [
         name='manage_registration_complete'
     ),
 
+    # 管理员操作：关联动态 / 评论
+    path(
+        '<int:pk>/moments/<int:moment_id>/delete/',
+        views.manage_moment_delete,
+        name='manage_moment_delete'
+    ),
+    path(
+        '<int:pk>/comments/<int:comment_id>/delete/',
+        views.manage_activity_comment_delete,
+        name='manage_activity_comment_delete'
+    ),
+
     # 管理员操作：打卡审核
     path(
         '<int:pk>/checkins/<int:checkin_id>/approve/',
@@ -50,7 +62,7 @@ urlpatterns = [
         name='manage_checkin_revoke'
     ),
 
-    # 导出
+    # 导出 CSV
     path(
         '<int:pk>/export/participants/',
         views.export_activity_participants_csv,
@@ -65,6 +77,23 @@ urlpatterns = [
         '<int:pk>/export/moments/',
         views.export_activity_moments_csv,
         name='export_activity_moments_csv'
+    ),
+
+    # 导出 Excel
+    path(
+        '<int:pk>/export/participants/excel/',
+        views.export_activity_participants_excel,
+        name='export_activity_participants_excel'
+    ),
+    path(
+        '<int:pk>/export/checkins/excel/',
+        views.export_activity_checkins_excel,
+        name='export_activity_checkins_excel'
+    ),
+    path(
+        '<int:pk>/export/moments/excel/',
+        views.export_activity_moments_excel,
+        name='export_activity_moments_excel'
     ),
 
     # 评论
