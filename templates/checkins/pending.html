@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}待审核打卡 - 校园打卡平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .page-header::before {
+        content: "";
+        position: absolute;
+        top: -45%;
+        right: -8%;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+    }
+
+    .page-header h1,
+    .page-header p,
+    .page-header .badge {
+        position: relative;
+        z-index: 1;
+    }
+
+    .review-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+        border: none;
+    }
+
+    .review-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .review-user {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.25rem;
+    }
+
+    .review-meta {
+        color: #6b7280;
+        font-size: 0.92rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .review-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.85rem;
+        border-radius: 999px;
+        background: #fef3c7;
+        color: #b45309;
+        font-size: 0.84rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.9rem;
+        margin-bottom: 1rem;
+    }
+
+    .info-box {
+        background: #f8fafc;
+        border-radius: 0.85rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .info-label {
+        font-size: 0.82rem;
+        color: #6b7280;
+        margin-bottom: 0.35rem;
+    }
+
+    .info-value {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #111827;
+        word-break: break-word;
+    }
+
+    .remark-box {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        border-radius: 0.85rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .review-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .review-form {
+        background: #fafafa;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.9rem;
+        padding: 1rem;
+    }
+
+    .review-form-title {
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 0.75rem;
+        color: #111827;
+    }
+
+    .empty-box {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        padding: 3rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
+    .empty-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+    }
+
+    @media (max-width: 992px) {
+        .info-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .review-actions {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .review-top {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .info-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <h1 class="mb-2">📝 待审核打卡</h1>
+            <p class="mb-0">
+                {% if user.role == 'admin' %}
+                    查看并处理全平台待审核打卡记录。
+                {% else %}
+                    查看并处理你有权限管理的活动打卡记录。
+                {% endif %}
+            </p>
+        </div>
+        <span class="badge rounded-pill bg-warning text-dark px-3 py-2">
+            共 {{ checkins|length }} 条待审核
+        </span>
+    </div>
+</div>
+
+{% if checkins %}
+    {% for checkin in checkins %}
+    <div class="review-card">
+        <div class="review-top">
+            <div>
+                <div class="review-user">{{ checkin.user.username }}</div>
+                <div class="review-meta">
+                    <span>活动：{{ checkin.activity.title }}</span>
+                    <span>提交时间：{{ checkin.created_at|date:"m-d H:i" }}</span>
+                    <span>打卡日期：{{ checkin.check_in_date|date:"Y-m-d" }}</span>
+                </div>
+            </div>
+            <span class="review-badge">待审核</span>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-box">
+                <div class="info-label">位置名称</div>
+                <div class="info-value">{{ checkin.location_name|default:"未获取位置" }}</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">定位精度</div>
+                <div class="info-value">
+                    {% if checkin.accuracy %}
+                        {{ checkin.accuracy }} 米
+                    {% else %}
+                        未知
+                    {% endif %}
+                </div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">照片数量</div>
+                <div class="info-value">{{ checkin.photos.count }} 张</div>
+            </div>
+            <div class="info-box">
+                <div class="info-label">当前积分</div>
+                <div class="info-value">{{ checkin.points_earned|default:"0" }} 分</div>
+            </div>
+        </div>
+
+        {% if checkin.remark %}
+        <div class="remark-box">
+            <strong>打卡备注：</strong>{{ checkin.remark }}
+        </div>
+        {% endif %}
+
+        <div class="review-actions">
+            <form method="post" action="{% url 'checkins:approve' checkin.pk %}" class="review-form">
+                {% csrf_token %}
+                <div class="review-form-title">✅ 通过打卡</div>
+                <div class="mb-3">
+                    <label class="form-label">通过备注</label>
+                    <input type="text"
+                           name="note"
+                           class="form-control"
+                           placeholder="可选，例如：定位正常，照片清晰">
+                </div>
+                <button type="submit" class="btn btn-success w-100">
+                    通过审核
+                </button>
+            </form>
+
+            <form method="post" action="{% url 'checkins:reject' checkin.pk %}" class="review-form">
+                {% csrf_token %}
+                <div class="review-form-title">❌ 拒绝打卡</div>
+                <div class="mb-3">
+                    <label class="form-label">拒绝原因</label>
+                    <input type="text"
+                           name="note"
+                           class="form-control"
+                           placeholder="必填，例如：照片不清晰 / 非活动现场"
+                           required>
+                </div>
+                <button type="submit" class="btn btn-outline-danger w-100">
+                    拒绝审核
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="empty-box">
+        <div class="empty-icon">📭</div>
+        <h3 class="mb-3">当前没有待审核打卡</h3>
+        <p class="text-muted mb-4">所有待审核打卡都已经处理完成。</p>
+        <a href="{% url 'dashboard:statistics' %}" class="btn btn-primary">
+            返回数据中心
+        </a>
+    </div>
+{% endif %}
+{% endblock %}

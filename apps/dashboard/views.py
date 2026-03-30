@@ -5,9 +5,11 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Count, Sum, Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.users.models import User
@@ -37,6 +39,102 @@ def _get_visible_activities(user):
     ).distinct()
 
 
+def _build_summary_cards(user, visible_activities, today):
+    if _is_platform_admin(user):
+        return [
+            {
+                'title': '总用户数',
+                'value': User.objects.count(),
+                'subtitle': f"今日新增: {User.objects.filter(created_at__date=today).count()}",
+                'icon': 'fa-users',
+                'color': 'primary',
+                'dark_text': False,
+                'url': '/users/admin/user-list/',
+                'link_text': '点击进入用户管理 →',
+            },
+            {
+                'title': '总活动数',
+                'value': Activity.objects.count(),
+                'subtitle': f"进行中: {Activity.objects.filter(status='ongoing').count()}",
+                'icon': 'fa-calendar-alt',
+                'color': 'success',
+                'dark_text': False,
+                'url': reverse('activities:list'),
+                'link_text': '点击进入活动广场 →',
+            },
+            {
+                'title': '总打卡数',
+                'value': CheckIn.objects.filter(status='approved').count(),
+                'subtitle': f"今日: {CheckIn.objects.filter(status='approved', created_at__date=today).count()}",
+                'icon': 'fa-check-circle',
+                'color': 'info',
+                'dark_text': False,
+                'url': reverse('checkins:pending'),
+                'link_text': '点击进入打卡审核 →',
+            },
+            {
+                'title': '总积分',
+                'value': User.objects.aggregate(total=Sum('points'))['total'] or 0,
+                'subtitle': '累计发放',
+                'icon': 'fa-coins',
+                'color': 'warning',
+                'dark_text': True,
+                'url': reverse('dashboard:points_overview'),
+                'link_text': '点击进入积分发放 →',
+            },
+        ]
+
+    registrations = ActivityRegistration.objects.filter(activity__in=visible_activities)
+    approved_checkins = CheckIn.objects.filter(
+        activity__in=visible_activities,
+        status='approved',
+    )
+    related_moments = Moment.objects.filter(activity__in=visible_activities)
+
+    return [
+        {
+            'title': '我管理的活动数',
+            'value': visible_activities.count(),
+            'subtitle': f"即将开始: {visible_activities.filter(status='upcoming').count()}",
+            'icon': 'fa-calendar-alt',
+            'color': 'primary',
+            'dark_text': False,
+            'url': f"{reverse('activities:my')}?type=managed",
+            'link_text': '点击进入我的活动 →',
+        },
+        {
+            'title': '进行中活动',
+            'value': visible_activities.filter(status='ongoing').count(),
+            'subtitle': f"已结束: {visible_activities.filter(status='ended').count()}",
+            'icon': 'fa-bolt',
+            'color': 'success',
+            'dark_text': False,
+            'url': reverse('activities:list'),
+            'link_text': '点击进入活动广场 →',
+        },
+        {
+            'title': '报名人次',
+            'value': registrations.exclude(status='cancelled').count(),
+            'subtitle': f"已完成: {registrations.filter(status='completed').count()}",
+            'icon': 'fa-user-check',
+            'color': 'info',
+            'dark_text': False,
+            'url': reverse('dashboard:participants_overview'),
+            'link_text': '点击进入报名管理 →',
+        },
+        {
+            'title': '发放积分',
+            'value': approved_checkins.aggregate(total=Sum('points_earned'))['total'] or 0,
+            'subtitle': f"关联动态: {related_moments.count()}",
+            'icon': 'fa-coins',
+            'color': 'warning',
+            'dark_text': True,
+            'url': reverse('dashboard:points_overview'),
+            'link_text': '点击进入积分发放 →',
+        },
+    ]
+
+
 @login_required
 def statistics_view(request):
     """数据统计页面"""
@@ -46,46 +144,11 @@ def statistics_view(request):
         messages.warning(request, '你暂无权限访问数据中心。')
         return redirect('index')
 
-    now = timezone.now()
-    today = now.date()
+    today = timezone.localdate()
     visible_activities = _get_visible_activities(user)
+    summary_cards = _build_summary_cards(user, visible_activities, today)
 
     if _is_platform_admin(user):
-        summary_cards = [
-            {
-                'title': '总用户数',
-                'value': User.objects.count(),
-                'subtitle': f"今日新增: {User.objects.filter(created_at__date=today).count()}",
-                'icon': 'fa-users',
-                'color': 'primary',
-                'dark_text': False,
-            },
-            {
-                'title': '总活动数',
-                'value': Activity.objects.count(),
-                'subtitle': f"进行中: {Activity.objects.filter(status='ongoing').count()}",
-                'icon': 'fa-calendar-alt',
-                'color': 'success',
-                'dark_text': False,
-            },
-            {
-                'title': '总打卡数',
-                'value': CheckIn.objects.filter(status='approved').count(),
-                'subtitle': f"今日: {CheckIn.objects.filter(status='approved', created_at__date=today).count()}",
-                'icon': 'fa-check-circle',
-                'color': 'info',
-                'dark_text': False,
-            },
-            {
-                'title': '总积分',
-                'value': User.objects.aggregate(total=Sum('points'))['total'] or 0,
-                'subtitle': '累计发放',
-                'icon': 'fa-coins',
-                'color': 'warning',
-                'dark_text': True,
-            },
-        ]
-
         ranking_users = User.objects.order_by('-points', 'username')[:10]
         ranking_title = '积分排行榜'
         activity_list_title = '热门活动'
@@ -101,48 +164,6 @@ def statistics_view(request):
             {'id': 'pointsChart', 'type': 'points_distribution', 'title': '用户积分分布'},
         ]
     else:
-        registrations = ActivityRegistration.objects.filter(activity__in=visible_activities)
-        approved_checkins = CheckIn.objects.filter(
-            activity__in=visible_activities,
-            status='approved',
-        )
-        related_moments = Moment.objects.filter(activity__in=visible_activities)
-
-        summary_cards = [
-            {
-                'title': '我管理的活动数',
-                'value': visible_activities.count(),
-                'subtitle': f"即将开始: {visible_activities.filter(status='upcoming').count()}",
-                'icon': 'fa-calendar-alt',
-                'color': 'primary',
-                'dark_text': False,
-            },
-            {
-                'title': '进行中活动',
-                'value': visible_activities.filter(status='ongoing').count(),
-                'subtitle': f"已结束: {visible_activities.filter(status='ended').count()}",
-                'icon': 'fa-bolt',
-                'color': 'success',
-                'dark_text': False,
-            },
-            {
-                'title': '报名人次',
-                'value': registrations.exclude(status='cancelled').count(),
-                'subtitle': f"已完成: {registrations.filter(status='completed').count()}",
-                'icon': 'fa-user-check',
-                'color': 'info',
-                'dark_text': False,
-            },
-            {
-                'title': '发放积分',
-                'value': approved_checkins.aggregate(total=Sum('points_earned'))['total'] or 0,
-                'subtitle': f"关联动态: {related_moments.count()}",
-                'icon': 'fa-coins',
-                'color': 'warning',
-                'dark_text': True,
-            },
-        ]
-
         ranking_users = User.objects.filter(
             activity_registrations__activity__in=visible_activities
         ).distinct().order_by('-points', 'username')[:10]
@@ -181,6 +202,107 @@ def statistics_view(request):
 
 
 @login_required
+def participants_overview(request):
+    """报名管理总览页"""
+    user = request.user
+    if not _can_access_dashboard(user):
+        messages.warning(request, '你暂无权限访问该页面。')
+        return redirect('index')
+
+    visible_activities = _get_visible_activities(user)
+    keyword = request.GET.get('q', '').strip()
+    status = request.GET.get('status', '').strip()
+    activity_id = request.GET.get('activity', '').strip()
+
+    qs = ActivityRegistration.objects.filter(activity__in=visible_activities).select_related('user', 'activity').order_by('-registered_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(user__real_name__icontains=keyword) |
+            Q(user__student_id__icontains=keyword) |
+            Q(activity__title__icontains=keyword)
+        )
+
+    if status:
+        qs = qs.filter(status=status)
+
+    if activity_id:
+        qs = qs.filter(activity_id=activity_id)
+
+    page_obj = Paginator(qs, 12).get_page(request.GET.get('page'))
+
+    summary_qs = ActivityRegistration.objects.filter(activity__in=visible_activities)
+    context = {
+        'page_title': '报名管理',
+        'page_subtitle': '查看你当前有权限管理范围内的活动报名记录',
+        'activities': visible_activities.order_by('-created_at'),
+        'page_obj': page_obj,
+        'keyword': keyword,
+        'current_status': status,
+        'current_activity': activity_id,
+        'summary': {
+            'total': summary_qs.exclude(status='cancelled').count(),
+            'registered': summary_qs.filter(status='registered').count(),
+            'checked_in': summary_qs.filter(status='checked_in').count(),
+            'completed': summary_qs.filter(status='completed').count(),
+        },
+    }
+    return render(request, 'dashboard/participants_overview.html', context)
+
+
+@login_required
+def points_overview(request):
+    """积分发放总览页"""
+    user = request.user
+    if not _can_access_dashboard(user):
+        messages.warning(request, '你暂无权限访问该页面。')
+        return redirect('index')
+
+    visible_activities = _get_visible_activities(user)
+    keyword = request.GET.get('q', '').strip()
+    activity_id = request.GET.get('activity', '').strip()
+
+    qs = CheckIn.objects.filter(
+        activity__in=visible_activities,
+        status='approved',
+    ).select_related('user', 'activity').order_by('-created_at')
+
+    if keyword:
+        qs = qs.filter(
+            Q(user__username__icontains=keyword) |
+            Q(user__real_name__icontains=keyword) |
+            Q(user__student_id__icontains=keyword) |
+            Q(activity__title__icontains=keyword) |
+            Q(remark__icontains=keyword) |
+            Q(review_note__icontains=keyword)
+        )
+
+    if activity_id:
+        qs = qs.filter(activity_id=activity_id)
+
+    page_obj = Paginator(qs, 12).get_page(request.GET.get('page'))
+    summary_qs = CheckIn.objects.filter(activity__in=visible_activities, status='approved')
+    today = timezone.localdate()
+
+    context = {
+        'page_title': '积分发放',
+        'page_subtitle': '查看已审核通过并成功发放的积分记录',
+        'activities': visible_activities.order_by('-created_at'),
+        'page_obj': page_obj,
+        'keyword': keyword,
+        'current_activity': activity_id,
+        'summary': {
+            'total_points': summary_qs.aggregate(total=Sum('points_earned'))['total'] or 0,
+            'total_records': summary_qs.count(),
+            'today_points': summary_qs.filter(created_at__date=today).aggregate(total=Sum('points_earned'))['total'] or 0,
+            'today_records': summary_qs.filter(created_at__date=today).count(),
+        },
+    }
+    return render(request, 'dashboard/points_overview.html', context)
+
+
+@login_required
 def get_chart_data(request):
     """获取图表数据 API"""
     user = request.user
@@ -192,7 +314,7 @@ def get_chart_data(request):
     is_admin = _is_platform_admin(user)
     visible_activities = _get_visible_activities(user)
 
-    today = timezone.now().date()
+    today = timezone.localdate()
 
     if chart_type == 'checkin_trend':
         labels = []

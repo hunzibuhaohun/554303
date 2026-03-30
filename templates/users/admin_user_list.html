@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+
+{% block title %}用户管理 - 校园打卡平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .page-header::before {
+        content: "";
+        position: absolute;
+        top: -45%;
+        right: -8%;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+    }
+
+    .page-header h1,
+    .page-header p,
+    .page-header .header-tags {
+        position: relative;
+        z-index: 1;
+    }
+
+    .header-tags {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .header-tag {
+        background: rgba(255,255,255,0.16);
+        padding: 0.4rem 0.85rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+    }
+
+    .filter-card,
+    .table-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        border: none;
+    }
+
+    .table thead th {
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+        color: #374151;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .badge-role-student {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .badge-role-teacher {
+        background: #fef3c7;
+        color: #b45309;
+    }
+
+    .badge-role-admin {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+
+    .empty-box {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #6b7280;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="mb-2">👥 用户管理</h1>
+    <p class="mb-0">平台管理员专用页面，可按关键词、角色、院系和账号状态查看用户名单。</p>
+    <div class="header-tags">
+        <span class="header-tag">仅平台管理员可见</span>
+        <span class="header-tag">活动管理员无权限</span>
+        <span class="header-tag">支持多条件查询</span>
+    </div>
+</div>
+
+<div class="filter-card p-4 mb-4">
+    <form method="get" class="row g-3">
+        <div class="col-lg-4">
+            <label class="form-label">关键词</label>
+            <input type="text" name="q" class="form-control" value="{{ filters.q }}" placeholder="用户名 / 真实姓名 / 学号 / 手机号 / 邮箱">
+        </div>
+        <div class="col-lg-2 col-md-4">
+            <label class="form-label">角色</label>
+            <select name="role" class="form-select">
+                <option value="">全部角色</option>
+                {% for value, label in role_choices %}
+                <option value="{{ value }}" {% if filters.role == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-lg-3 col-md-4">
+            <label class="form-label">院系</label>
+            <input type="text" name="department" class="form-control" value="{{ filters.department }}" placeholder="输入院系名称">
+        </div>
+        <div class="col-lg-2 col-md-4">
+            <label class="form-label">账号状态</label>
+            <select name="is_active" class="form-select">
+                <option value="">全部</option>
+                <option value="1" {% if filters.is_active == '1' %}selected{% endif %}>启用</option>
+                <option value="0" {% if filters.is_active == '0' %}selected{% endif %}>停用</option>
+            </select>
+        </div>
+        <div class="col-lg-1 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">查询</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-card p-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h3 class="mb-0" style="font-size: 1.15rem; font-weight: 700;">用户名单</h3>
+        <span class="badge bg-primary">共 {{ total_count }} 个用户</span>
+    </div>
+
+    {% if users %}
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>真实姓名</th>
+                    <th>学号</th>
+                    <th>手机号</th>
+                    <th>院系 / 专业</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>积分</th>
+                    <th>注册时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in users %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>
+                        <div class="fw-semibold">{{ item.username }}</div>
+                        <div class="text-muted small">{{ item.email|default:'未填写邮箱' }}</div>
+                    </td>
+                    <td>{{ item.real_name|default:'未实名' }}</td>
+                    <td>{{ item.student_id|default:'-' }}</td>
+                    <td>{{ item.phone|default:'-' }}</td>
+                    <td>
+                        <div>{{ item.department|default:'未设置院系' }}</div>
+                        <div class="text-muted small">{{ item.major|default:'未设置专业' }}</div>
+                    </td>
+                    <td>
+                        {% if item.role == 'student' %}
+                        <span class="badge badge-role-student">{{ item.get_role_display }}</span>
+                        {% elif item.role == 'teacher' %}
+                        <span class="badge badge-role-teacher">{{ item.get_role_display }}</span>
+                        {% elif item.role == 'admin' %}
+                        <span class="badge badge-role-admin">{{ item.get_role_display }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ item.get_role_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.is_active %}
+                        <span class="badge bg-success">启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">停用</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.points }}</td>
+                    <td>{{ item.created_at|date:'Y-m-d H:i' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-box">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">🔍</div>
+        <p class="mb-2">没有查询到符合条件的用户。</p>
+        <p class="mb-0">请调整筛选条件后重试。</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

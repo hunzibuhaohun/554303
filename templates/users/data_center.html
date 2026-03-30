@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}数据中心 - 校园打卡平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .page-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .page-header::before {
+        content: "";
+        position: absolute;
+        top: -40%;
+        right: -8%;
+        width: 260px;
+        height: 260px;
+        background: rgba(255,255,255,0.12);
+        border-radius: 50%;
+    }
+
+    .page-header h1, .page-header p {
+        position: relative;
+        z-index: 1;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card, .chart-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        border: none;
+    }
+
+    .stat-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.9rem;
+        font-size: 1.6rem;
+    }
+
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.35rem;
+    }
+
+    .stat-label {
+        color: #6b7280;
+        margin: 0;
+    }
+
+    .progress-wrap {
+        margin-top: 2rem;
+    }
+
+    .section-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: #111827;
+    }
+
+    .trend-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .trend-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.85rem 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .trend-item:last-child {
+        border-bottom: none;
+    }
+
+    .tag {
+        padding: 0.22rem 0.7rem;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        background: #eff6ff;
+        color: #2563eb;
+    }
+
+    @media (max-width: 992px) {
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 576px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="mb-2">📊 个人数据中心</h1>
+    <p class="mb-0">查看你的打卡、活动参与、积分趋势与等级进度。</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card text-center">
+        <div class="stat-icon" style="background:#dcfce7; color:#16a34a;">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stat-number">{{ checkin_stats.total|default:"0" }}</div>
+        <p class="stat-label">累计打卡</p>
+    </div>
+
+    <div class="stat-card text-center">
+        <div class="stat-icon" style="background:#dbeafe; color:#2563eb;">
+            <i class="fas fa-calendar-week"></i>
+        </div>
+        <div class="stat-number">{{ checkin_stats.this_week|default:"0" }}</div>
+        <p class="stat-label">近7天打卡</p>
+    </div>
+
+    <div class="stat-card text-center">
+        <div class="stat-icon" style="background:#fef3c7; color:#d97706;">
+            <i class="fas fa-coins"></i>
+        </div>
+        <div class="stat-number">{{ user.points|default:"0" }}</div>
+        <p class="stat-label">当前积分</p>
+    </div>
+
+    <div class="stat-card text-center">
+        <div class="stat-icon" style="background:#fee2e2; color:#ef4444;">
+            <i class="fas fa-fire"></i>
+        </div>
+        <div class="stat-number">{{ user.streak_days|default:"0" }}</div>
+        <p class="stat-label">连续打卡</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="chart-card h-100">
+            <div class="section-title">🎯 活动参与概况</div>
+            <ul class="trend-list">
+                <li class="trend-item">
+                    <span>参与活动总数</span>
+                    <span class="tag">{{ activity_stats.joined|default:"0" }}</span>
+                </li>
+                <li class="trend-item">
+                    <span>我创建的活动</span>
+                    <span class="tag">{{ activity_stats.created|default:"0" }}</span>
+                </li>
+                <li class="trend-item">
+                    <span>进行中的活动</span>
+                    <span class="tag">{{ activity_stats.ongoing|default:"0" }}</span>
+                </li>
+            </ul>
+
+            <div class="progress-wrap">
+                <div class="section-title">⭐ 等级进度</div>
+                <div class="progress" style="height: 14px; border-radius: 999px;">
+                    <div class="progress-bar" role="progressbar"
+                         style="width: {{ level_progress|default:0 }}%;"
+                         aria-valuenow="{{ level_progress|default:0 }}"
+                         aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                </div>
+                <div class="mt-2 text-muted small">当前升级进度：{{ level_progress|default:"0" }}%</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="chart-card h-100">
+            <div class="section-title">📈 最近 7 天积分趋势</div>
+
+            {% if point_trend %}
+            <ul class="trend-list">
+                {% for item in point_trend %}
+                <li class="trend-item">
+                    <span>{{ item.date }}</span>
+                    <span class="tag">{{ item.points }} 分</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-chart-line fa-3x mb-3"></i>
+                <p class="mb-0">暂无趋势数据</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

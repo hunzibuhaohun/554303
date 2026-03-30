@@ -4,13 +4,93 @@
 
 {% block extra_css %}
 <style>
+    .checkin-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .checkin-hero::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+    }
+
+    .checkin-hero h2,
+    .checkin-hero p,
+    .checkin-hero .hero-tags {
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-top: 1rem;
+    }
+
+    .hero-tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.4rem 0.85rem;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.16);
+        font-size: 0.9rem;
+    }
+
+    .checkin-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        padding: 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.85rem;
+    }
+
+    .tips-box {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        border-radius: 0.9rem;
+        padding: 1rem 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .tips-box.warning {
+        background: #fffbeb;
+        border-color: #fde68a;
+        color: #92400e;
+    }
+
+    .camera-shell {
+        background: #f8fafc;
+        border: 1px dashed #cbd5e1;
+        border-radius: 1rem;
+        padding: 1rem;
+    }
+
     .camera-container {
         position: relative;
         width: 100%;
         max-width: 640px;
         margin: 0 auto;
         background: #000;
-        border-radius: 10px;
+        border-radius: 12px;
         overflow: hidden;
         display: none;
     }
@@ -26,11 +106,11 @@
         bottom: 20px;
         left: 50%;
         transform: translateX(-50%);
-        width: 70px;
-        height: 70px;
+        width: 72px;
+        height: 72px;
         border-radius: 50%;
         border: 4px solid white;
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.28);
         cursor: pointer;
     }
 
@@ -50,23 +130,73 @@
         display: none;
     }
 
-    .photo-preview {
-        max-width: 100%;
-        max-height: 300px;
-        border-radius: 10px;
-        margin-top: 10px;
+    .camera-controls {
+        margin-top: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: center;
     }
 
-    .camera-controls {
+    .photo-preview-wrap {
+        margin-top: 1rem;
+        text-align: center;
+    }
+
+    .photo-preview {
+        max-width: 100%;
+        max-height: 320px;
+        border-radius: 12px;
         margin-top: 10px;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.12);
     }
 
     .location-manual {
         display: none;
-        margin-top: 10px;
-        padding: 15px;
-        background: #f8f9fa;
-        border-radius: 8px;
+        margin-top: 0.75rem;
+        padding: 1rem;
+        background: #f8fafc;
+        border-radius: 0.85rem;
+        border: 1px solid #e5e7eb;
+    }
+
+    .status-note {
+        font-size: 0.92rem;
+        color: #6b7280;
+        margin-top: 0.5rem;
+    }
+
+    .submit-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+    }
+
+    .activity-note {
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #6b7280;
+    }
+
+    .empty-box {
+        background: #f8fafc;
+        border-radius: 1rem;
+        padding: 2rem 1.5rem;
+        text-align: center;
+        border: 1px dashed #d1d5db;
+    }
+
+    @media (max-width: 576px) {
+        .checkin-hero,
+        .checkin-card {
+            padding: 1.2rem;
+        }
+
+        .submit-bar .btn,
+        .camera-controls .btn {
+            width: 100%;
+        }
     }
 </style>
 {% endblock %}
@@ -74,19 +204,37 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
-        <div class="glass-card">
-            <div class="text-center mb-4">
-                <i class="fas fa-camera-retro fa-3x text-primary mb-3"></i>
-                <h2>活动打卡</h2>
-                <p class="text-muted">记录精彩瞬间，获取积分奖励</p>
+        <div class="checkin-hero">
+            <h2 class="mb-2">📍 活动打卡</h2>
+            <p class="mb-0">完成现场打卡，记录活动参与情况，并按审核结果发放积分。</p>
+            <div class="hero-tags">
+                <span class="hero-tag">📝 可填写备注</span>
+                <span class="hero-tag">📷 可上传或拍摄照片</span>
+                <span class="hero-tag">📡 支持定位校验</span>
+                <span class="hero-tag">🔁 被拒绝后当天可重新提交</span>
             </div>
+        </div>
 
+        <div class="checkin-card">
             {% if not registrations %}
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                您还没有可打卡的活动，<a href="{% url 'activities:list' %}">去报名活动</a>
+            <div class="empty-box">
+                <div class="mb-3" style="font-size: 3rem;">📭</div>
+                <h4 class="mb-3">当前没有可打卡的活动</h4>
+                <p class="text-muted mb-4">你需要先报名已开放的活动，才能在这里进行活动打卡。</p>
+                <a href="{% url 'activities:list' %}" class="btn btn-primary">去活动广场</a>
             </div>
             {% else %}
+
+            <div class="tips-box">
+                <strong>提交说明：</strong>
+                同一活动同一天内，若打卡处于“待审核”或“已通过”，不能重复提交；若审核被拒绝，则可在当天修改内容后重新打卡。
+            </div>
+
+            <div class="tips-box warning">
+                <strong>定位提示：</strong>
+                若浏览器无法获取定位，你仍可手动输入经纬度或跳过位置；但某些活动在自动校验模式下，缺少有效定位可能无法通过。
+            </div>
+
             <form method="post" enctype="multipart/form-data" id="checkinForm">
                 {% csrf_token %}
 
@@ -96,59 +244,65 @@
                 </div>
                 {% endif %}
 
-                <!-- 选择活动 -->
                 <div class="mb-4">
-                    <label class="form-label">选择活动 *</label>
+                    <div class="section-title">1. 选择活动</div>
                     {{ form.activity }}
                     {% if form.activity.errors %}
-                    <div class="text-danger small">{{ form.activity.errors }}</div>
+                    <div class="text-danger small mt-2">{{ form.activity.errors }}</div>
                     {% endif %}
-                </div>
-
-                <!-- 现场拍照 -->
-                <div class="mb-4">
-                    <label class="form-label">现场拍照 <small class="text-muted">(可选)</small></label>
-
-                    <div class="camera-container mb-3" id="cameraContainer">
-                        <video id="video" autoplay playsinline></video>
-                        <button type="button" class="capture-btn" onclick="takePhoto()" title="拍照"></button>
-                    </div>
-
-                    <div class="text-center camera-controls" id="cameraControls">
-                        <button type="button" class="btn btn-outline-primary me-2" onclick="startCamera()" id="startBtn">
-                            <i class="fas fa-camera me-2"></i>打开摄像头
-                        </button>
-                        <button type="button" class="btn btn-outline-danger me-2" onclick="closeCamera()" id="closeBtn" style="display: none;">
-                            <i class="fas fa-times me-2"></i>关闭摄像头
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="retakePhoto()" id="retakeBtn" style="display: none;">
-                            <i class="fas fa-redo me-2"></i>重新拍照
-                        </button>
-                    </div>
-
-                    <canvas id="canvas"></canvas>
-                    <div id="photoPreview" class="mt-3"></div>
-
-                    <input type="file" name="photos" id="photoInput" multiple accept="image/*" style="display: none;">
-
-                    <div class="form-text text-muted mt-2">
-                        不上传照片也可以提交打卡。若活动为“异常审核”模式，缺少照片可能会进入待审核。
+                    <div class="activity-note">
+                        这里只显示你当前可打卡的活动。若某次打卡被拒绝，请重新选择同一活动后再次提交。
                     </div>
                 </div>
 
-                <!-- 打卡备注 -->
                 <div class="mb-4">
-                    <label class="form-label">打卡备注</label>
+                    <div class="section-title">2. 现场拍照 <small class="text-muted">（可选）</small></div>
+
+                    <div class="camera-shell">
+                        <div class="camera-container" id="cameraContainer">
+                            <video id="video" autoplay playsinline></video>
+                            <button type="button" class="capture-btn" onclick="takePhoto()" title="拍照"></button>
+                        </div>
+
+                        <div class="camera-controls" id="cameraControls">
+                            <button type="button" class="btn btn-outline-primary" onclick="startCamera()" id="startBtn">
+                                <i class="fas fa-camera me-2"></i>打开摄像头
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" onclick="closeCamera()" id="closeBtn" style="display: none;">
+                                <i class="fas fa-times me-2"></i>关闭摄像头
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="retakePhoto()" id="retakeBtn" style="display: none;">
+                                <i class="fas fa-redo me-2"></i>重新拍照
+                            </button>
+                        </div>
+
+                        <canvas id="canvas"></canvas>
+
+                        <div id="photoPreview" class="photo-preview-wrap"></div>
+
+                        <input type="file" name="photos" id="photoInput" multiple accept="image/*" style="display: none;">
+
+                        <div class="status-note">
+                            不上传照片也可以提交。若活动采用风险审核模式，未上传照片可能会进入待审核或提高审核风险。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="section-title">3. 打卡备注</div>
                     {{ form.remark }}
                     {% if form.remark.errors %}
-                    <div class="text-danger small">{{ form.remark.errors }}</div>
+                    <div class="text-danger small mt-2">{{ form.remark.errors }}</div>
                     {% endif %}
+                    <div class="status-note">
+                        建议说明参与内容、现场情况或补充说明，便于管理员审核。
+                    </div>
                 </div>
 
-                <!-- 位置信息 -->
                 <div class="mb-4">
-                    <label class="form-label">位置信息 <small class="text-muted">(可选)</small></label>
-                    <div id="locationStatus" class="alert alert-info">
+                    <div class="section-title">4. 位置信息 <small class="text-muted">（可选）</small></div>
+
+                    <div id="locationStatus" class="alert alert-info mb-2">
                         <i class="fas fa-map-marker-alt me-2"></i>
                         <span id="locationText">正在获取位置...</span>
                         <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="retryLocation()" id="retryBtn" style="display: none;">
@@ -166,15 +320,17 @@
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <label class="form-label small">纬度</label>
-                                <input type="number" step="any" class="form-control" id="manualLat" placeholder="如: 39.9042">
+                                <input type="number" step="any" class="form-control" id="manualLat" placeholder="如：39.9042">
                             </div>
                             <div class="col-md-6 mb-2">
                                 <label class="form-label small">经度</label>
-                                <input type="number" step="any" class="form-control" id="manualLng" placeholder="如: 116.4074">
+                                <input type="number" step="any" class="form-control" id="manualLng" placeholder="如：116.4074">
                             </div>
                         </div>
-                        <small class="text-muted">提示：可以手动输入经纬度，或直接跳过位置。</small>
-                        <div class="mt-2">
+                        <div class="status-note mb-2">
+                            你可以手动输入经纬度，也可以直接跳过位置。
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
                             <button type="button" class="btn btn-sm btn-primary" onclick="confirmManualLocation()">
                                 <i class="fas fa-check"></i> 确认位置
                             </button>
@@ -190,16 +346,19 @@
                     {{ form.location_name }}
 
                     {% if form.latitude.errors or form.longitude.errors or form.accuracy.errors or form.location_name.errors %}
-                    <div class="text-danger small">位置信息错误</div>
+                    <div class="text-danger small mt-2">位置信息填写有误，请检查后重新提交。</div>
                     {% endif %}
                 </div>
 
-                <div class="d-flex gap-2">
+                <div class="submit-bar">
                     <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
                         <i class="fas fa-check me-2"></i>提交打卡
                     </button>
-                    <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-lg">
-                        <i class="fas fa-times me-2"></i>取消
+                    <a href="{% url 'checkins:history' %}" class="btn btn-outline-info btn-lg">
+                        <i class="fas fa-history me-2"></i>查看打卡记录
+                    </a>
+                    <a href="{% url 'users:profile' %}" class="btn btn-outline-secondary btn-lg">
+                        <i class="fas fa-arrow-left me-2"></i>返回个人中心
                     </a>
                 </div>
             </form>
@@ -248,7 +407,7 @@ function startCamera() {
     })
     .catch(function(err) {
         console.error("无法访问摄像头:", err);
-        alert('无法访问摄像头，请确保已授予权限');
+        alert('无法访问摄像头，请确认浏览器已授予摄像头权限。');
     });
 }
 
@@ -274,7 +433,7 @@ function takePhoto() {
 
     photoPreview.innerHTML = `
         <img src="${imageDataUrl}" class="photo-preview" alt="拍照预览">
-        <p class="text-success mt-2"><i class="fas fa-check-circle"></i> 照片已拍摄</p>
+        <p class="text-success mt-3 mb-0"><i class="fas fa-check-circle me-1"></i>照片已拍摄，可直接提交或重新拍照</p>
     `;
 
     canvas.toBlob(function(blob) {
@@ -302,7 +461,7 @@ function retakePhoto() {
 
 function getLocation() {
     if (!("geolocation" in navigator)) {
-        showLocationError('浏览器不支持地理定位');
+        showLocationError('当前浏览器不支持地理定位');
         return;
     }
 
@@ -318,9 +477,12 @@ function getLocation() {
             document.getElementById('id_accuracy').value = position.coords.accuracy;
             document.getElementById('id_location_name').value = 'GPS定位';
 
-            const accuracyText = Math.round(position.coords.accuracy) < 100 ? '高精度' : `精度约${Math.round(position.coords.accuracy)}米`;
-            locationStatus.className = 'alert alert-success';
-            locationText.innerHTML = `<i class="fas fa-check-circle me-2"></i>位置已获取 (${accuracyText})`;
+            const accuracyText = Math.round(position.coords.accuracy) < 100
+                ? '高精度'
+                : `精度约${Math.round(position.coords.accuracy)}米`;
+
+            locationStatus.className = 'alert alert-success mb-2';
+            locationText.innerHTML = `<i class="fas fa-check-circle me-2"></i>位置已获取（${accuracyText}）`;
         },
         function(error) {
             console.error("获取位置失败:", error);
@@ -349,7 +511,7 @@ function getLocation() {
 }
 
 function showLocationError(msg) {
-    locationStatus.className = 'alert alert-warning';
+    locationStatus.className = 'alert alert-warning mb-2';
     locationText.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>${msg}`;
     retryBtn.style.display = 'inline-block';
     manualBtn.style.display = 'inline-block';
@@ -382,7 +544,7 @@ function confirmManualLocation() {
     document.getElementById('id_accuracy').value = 100;
     document.getElementById('id_location_name').value = '手动定位';
 
-    locationStatus.className = 'alert alert-info';
+    locationStatus.className = 'alert alert-info mb-2';
     locationText.innerHTML = `<i class="fas fa-info-circle me-2"></i>已手动设置位置`;
     manualLocation.style.display = 'none';
 }
@@ -397,7 +559,7 @@ function skipLocation() {
     document.getElementById('id_accuracy').value = '9999';
     document.getElementById('id_location_name').value = '未获取位置';
 
-    locationStatus.className = 'alert alert-secondary';
+    locationStatus.className = 'alert alert-secondary mb-2';
     locationText.innerHTML = `<i class="fas fa-forward me-2"></i>已跳过位置获取`;
     retryBtn.style.display = 'none';
     manualBtn.style.display = 'none';
@@ -408,6 +570,9 @@ function skipLocation() {
 const checkinForm = document.getElementById('checkinForm');
 if (checkinForm) {
     checkinForm.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>正在提交...';
+
         if (!document.getElementById('id_latitude').value) {
             document.getElementById('id_latitude').value = '0';
         }

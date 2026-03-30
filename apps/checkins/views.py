@@ -59,6 +59,14 @@ def _has_real_location(lat, lng):
     )
 
 
+def _can_resubmit_existing_checkin(existing_checkin):
+    """
+    已拒绝 / 已撤销：允许当天重新提交
+    待审核 / 已通过：不允许重复提交
+    """
+    return existing_checkin is not None and existing_checkin.status in ['rejected', 'revoked']
+
+
 def _evaluate_checkin_review(activity, lat, lng, accuracy, photos):
     """
     返回：
@@ -148,15 +156,19 @@ def _save_checkin_submission(
         'checkin': checkin,
         'points': int,
         'streak': int,
-        'is_resubmitting_revoked': bool,
+        'is_resubmitting': bool,
         'needs_manual_review': bool,
     }
     """
-    is_resubmitting_revoked = existing_checkin is not None and existing_checkin.status == 'revoked'
+    is_resubmitting = _can_resubmit_existing_checkin(existing_checkin)
 
     with transaction.atomic():
-        if is_resubmitting_revoked:
+        if is_resubmitting:
+            # 复用“被拒绝/已撤销”的原记录，避免触发同日唯一约束
             checkin = existing_checkin
+            checkin.user = user
+            checkin.activity = activity
+            checkin.registration = registration
             checkin.remark = form.cleaned_data.get('remark', '')
             checkin.latitude = form.cleaned_data.get('latitude') or 0
             checkin.longitude = form.cleaned_data.get('longitude') or 0
@@ -169,7 +181,7 @@ def _save_checkin_submission(
             checkin.status = 'pending' if needs_manual_review else 'approved'
             checkin.save()
 
-            # 撤销后重新提交：清理旧照片
+            # 重新提交时清理旧照片，再保存新照片
             checkin.photos.all().delete()
         else:
             checkin = form.save(commit=False)
@@ -212,13 +224,13 @@ def _save_checkin_submission(
         'checkin': checkin,
         'points': points,
         'streak': streak,
-        'is_resubmitting_revoked': is_resubmitting_revoked,
+        'is_resubmitting': is_resubmitting,
         'needs_manual_review': needs_manual_review,
     }
 
 
 def _build_checkin_success_message(result):
-    is_resubmitting_revoked = result['is_resubmitting_revoked']
+    is_resubmitting = result['is_resubmitting']
     needs_manual_review = result['needs_manual_review']
     points = result['points']
     streak = result['streak']
@@ -226,13 +238,13 @@ def _build_checkin_success_message(result):
     if needs_manual_review:
         return (
             '打卡重新提交成功，等待活动管理员审核！'
-            if is_resubmitting_revoked
+            if is_resubmitting
             else '打卡提交成功，等待活动管理员审核！'
         )
 
     return (
         f'打卡重新提交成功！+{points}积分，连续打卡 {streak} 天！🎉'
-        if is_resubmitting_revoked
+        if is_resubmitting
         else f'打卡成功！+{points}积分，连续打卡 {streak} 天！🎉'
     )
 
@@ -310,7 +322,7 @@ def _apply_checkin_review(*, checkin, reviewer, approved, review_note):
             sender=reviewer,
             message_type='activity',
             title='打卡审核未通过',
-            content=f'你在活动《{checkin.activity.title}》中的打卡未通过审核。原因：{review_note}',
+            content=f'你在活动《{checkin.activity.title}》中的打卡未通过审核。原因：{review_note}。你可以在当天修改后重新提交打卡。',
             related_activity=checkin.activity
         )
 
@@ -340,7 +352,7 @@ def checkin_view(request):
             lng = form.cleaned_data.get('longitude')
             accuracy = form.cleaned_data.get('accuracy')
             photos = request.FILES.getlist('photos')
-            today = timezone.now().date()
+            today = timezone.localdate()
 
             existing_checkin = CheckIn.objects.filter(
                 user=request.user,
@@ -348,8 +360,13 @@ def checkin_view(request):
                 check_in_date=today
             ).first()
 
-            if existing_checkin and existing_checkin.status != 'revoked':
-                messages.warning(request, '您今天已经打过卡了！')
+            if existing_checkin and not _can_resubmit_existing_checkin(existing_checkin):
+                if existing_checkin.status == 'pending':
+                    messages.warning(request, '你今天对该活动的打卡已提交，正在审核中，请勿重复提交。')
+                elif existing_checkin.status == 'approved':
+                    messages.warning(request, '你今天对该活动的打卡已审核通过，不能重复打卡。')
+                else:
+                    messages.warning(request, '你今天已经打过该活动的卡了。')
                 return redirect('checkins:history')
 
             review_eval = _evaluate_checkin_review(
@@ -533,20 +550,36 @@ class CheckInViewSet(viewsets.ModelViewSet):
         activity = serializer.validated_data['activity']
         today = timezone.localdate()
 
-        existing_non_revoked = CheckIn.objects.filter(
-            user=self.request.user,
-            activity=activity,
-            check_in_date=today
-        ).exclude(status='revoked').exists()
-
-        if existing_non_revoked:
-            raise ValidationError({'detail': '今天已完成该活动打卡，请勿重复提交'})
-
         registration, _ = ActivityRegistration.objects.get_or_create(
             user=self.request.user,
             activity=activity,
             defaults={'status': 'registered'}
         )
+
+        existing_checkin = CheckIn.objects.filter(
+            user=self.request.user,
+            activity=activity,
+            check_in_date=today
+        ).first()
+
+        if existing_checkin and existing_checkin.status in ['pending', 'approved']:
+            raise ValidationError({'detail': '今天已完成该活动打卡，请勿重复提交'})
+
+        if existing_checkin and existing_checkin.status in ['rejected', 'revoked']:
+            existing_checkin.registration = registration
+            existing_checkin.remark = serializer.validated_data.get('remark', '')
+            existing_checkin.location_name = serializer.validated_data.get('location_name') or '未获取位置'
+            existing_checkin.latitude = serializer.validated_data.get('latitude') or 0
+            existing_checkin.longitude = serializer.validated_data.get('longitude') or 0
+            existing_checkin.accuracy = serializer.validated_data.get('accuracy') or 9999
+            existing_checkin.check_in_date = today
+            existing_checkin.points_earned = 0
+            existing_checkin.reviewed_by = None
+            existing_checkin.review_note = ''
+            existing_checkin.status = 'approved'
+            existing_checkin.save()
+            serializer.instance = existing_checkin
+            return
 
         serializer.save(
             user=self.request.user,

@@ -1,1444 +1,1113 @@
-"""
-活动视图 - 校园打卡平台
-"""
-import csv
-import io
-from datetime import timedelta
+{% extends 'base.html' %}
+{% load static %}
 
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.core.paginator import Paginator
-from django.db import transaction
-from django.db.models import Q, F, Count, Sum
-from django.http import JsonResponse, HttpResponse
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse
-from django.utils import timezone
-from django.views.decorators.http import require_POST
+{% block title %}{{ activity.title }} - 校园打卡平台{% endblock %}
 
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment
-from openpyxl.utils import get_column_letter
+{% block extra_css %}
+{{ block.super }}
+<style>
+.activity-sidebar {
+    position: sticky;
+    top: 90px;
+}
 
-from apps.checkins.models import CheckIn
-from apps.checkins.utils import calculate_continuous_days, award_points
-from apps.social.models import Moment, Message
+.management-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
 
-from .forms import ActivityForm, ActivityCommentForm
-from .models import Activity, Category, ActivityRegistration, ActivityComment
+.management-toolbar-form {
+    flex: 1;
+    min-width: 280px;
+}
 
+.management-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
 
-def activity_list(request):
-    """活动列表视图"""
+.management-toolbar .form-control,
+.management-toolbar .form-select {
+    min-height: 38px;
+}
 
-    now = timezone.now()
+.dashboard-tab-pane .card {
+    border-radius: 14px;
+}
 
-    Activity.objects.exclude(status='cancelled').filter(
-        end_time__lt=now
-    ).exclude(status='ended').update(status='ended')
+.dashboard-section-title {
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
 
-    Activity.objects.exclude(status='cancelled').filter(
-        start_time__lte=now,
-        end_time__gte=now
-    ).exclude(status='ongoing').update(status='ongoing')
+.chart-panel {
+    min-height: 320px;
+}
 
-    Activity.objects.exclude(status='cancelled').filter(
-        start_time__gt=now
-    ).exclude(status='upcoming').update(status='upcoming')
+.chart-panel canvas {
+    width: 100% !important;
+    height: 260px !important;
+}
 
-    activities = Activity.objects.all().select_related(
-        'category', 'creator'
-    ).prefetch_related('participants')
+.comment-item {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 14px 0;
+}
 
-    q = request.GET.get('q')
-    if q:
-        activities = activities.filter(
-            Q(title__icontains=q) | Q(location__icontains=q)
-        )
+.comment-item:last-child {
+    border-bottom: none;
+}
 
-    category_id = request.GET.get('category')
-    if category_id:
-        activities = activities.filter(category_id=category_id)
-
-    status = request.GET.get('status', '')
-    if status == 'all':
-        pass
-    elif status:
-        activities = activities.filter(status=status)
-    else:
-        activities = activities.filter(status__in=['upcoming', 'ongoing'])
-
-    if request.GET.get('available_only'):
-        activities = activities.filter(
-            participants__lt=F('max_participants'),
-            status='upcoming'
-        )
-
-    sort = request.GET.get('sort', '-created_at')
-    activities = activities.order_by(sort)
-
-    paginator = Paginator(activities, 9)
-    page = request.GET.get('page')
-    activities = paginator.get_page(page)
-
-    query_params = ''
-    if request.GET:
-        params = request.GET.copy()
-        if 'page' in params:
-            del params['page']
-        if params:
-            query_params = '&' + params.urlencode()
-
-    categories = Category.objects.all()
-
-    context = {
-        'activities': activities,
-        'categories': categories,
-        'query_params': query_params,
-        'current_status': status,
-        'current_category': category_id,
-        'current_q': q,
+@media (max-width: 991.98px) {
+    .activity-sidebar {
+        position: static;
+        top: auto;
     }
-    return render(request, 'activities/list.html', context)
+}
+</style>
+{% endblock %}
 
+{% block content %}
+<div class="row g-4">
+    <!-- 左侧主内容 -->
+    <div class="col-lg-8">
+        <div class="glass-card mb-4">
+            <img src="{% if activity.cover_image %}{{ activity.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}"
+                 class="img-fluid rounded mb-4"
+                 alt="{{ activity.title }}"
+                 style="width: 100%; max-height: 400px; object-fit: cover;">
 
-def activity_detail(request, pk):
-    """活动详情视图"""
-    activity = get_object_or_404(
-        Activity.objects.select_related('category', 'creator')
-        .prefetch_related('participants', 'comments', 'managers'),
-        pk=pk
-    )
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <span class="badge mb-2" style="background-color: {{ activity.category.color|default:'#3B82F6' }}">
+                        {{ activity.category.name|default:'其他' }}
+                    </span>
+                    <h2 class="mb-1">{{ activity.title }}</h2>
+                </div>
+                <span class="badge bg-warning text-dark fs-6">
+                    <i class="fas fa-coins me-1"></i>+{{ activity.points }}积分
+                </span>
+            </div>
 
-    activity.update_status()
-    activity.refresh_from_db()
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <p><i class="fas fa-calendar text-primary me-2"></i>
+                        <strong>开始时间：</strong>{{ activity.start_time|date:"Y年m月d日 H:i" }}
+                    </p>
+                    <p><i class="fas fa-calendar-check text-primary me-2"></i>
+                        <strong>结束时间：</strong>{{ activity.end_time|date:"Y年m月d日 H:i" }}
+                    </p>
+                    <p><i class="fas fa-map-marker-alt text-danger me-2"></i>
+                        <strong>活动地点：</strong>{{ activity.location }}
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p><i class="fas fa-users text-success me-2"></i>
+                        <strong>参与人数：</strong>{{ activity.participants.count }}/{{ activity.max_participants }}
+                    </p>
+                    <p><i class="fas fa-eye text-info me-2"></i>
+                        <strong>浏览次数：</strong>{{ activity.view_count }}
+                    </p>
+                    <p><i class="fas fa-user text-secondary me-2"></i>
+                        <strong>发起人：</strong>{{ activity.creator.username }}
+                    </p>
+                </div>
+            </div>
 
-    activity.view_count += 1
-    activity.save(update_fields=['view_count'])
+            <h5>活动描述</h5>
+            <p class="text-muted">{{ activity.description|linebreaks }}</p>
 
-    is_registered = False
-    can_checkin = False
-    registration = None
+            {% if activity.requirements %}
+            <h5>参与要求</h5>
+            <p class="text-muted">{{ activity.requirements|linebreaks }}</p>
+            {% endif %}
 
-    can_edit_activity = False
-    can_delete_activity = False
-    can_close_activity = False
-    can_view_activity_dashboard = False
+            <hr>
 
-    if request.user.is_authenticated:
-        registration = ActivityRegistration.objects.filter(
-            user=request.user,
-            activity=activity
-        ).first()
-        is_registered = registration is not None
+            <div class="d-flex gap-2 flex-wrap">
+                {% if user.is_authenticated %}
+                    {% if is_registered %}
+                        {% if can_checkin %}
+                            <a href="{% url 'checkins:checkin' %}" class="btn btn-success">
+                                <i class="fas fa-check-circle me-2"></i>立即打卡
+                            </a>
+                        {% else %}
+                            <button class="btn btn-secondary" disabled>
+                                <i class="fas fa-user-check me-2"></i>已报名
+                            </button>
+                        {% endif %}
 
-        if is_registered:
-            can_checkin = (
-                registration.status == 'registered' and
-                activity.status == 'ongoing'
-            )
+                        {% if activity.status == 'upcoming' and registration.status == 'registered' %}
+                            <form method="post" action="{% url 'activities:cancel' activity.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-warning">
+                                    <i class="fas fa-user-minus me-2"></i>取消报名
+                                </button>
+                            </form>
+                        {% endif %}
 
-        can_edit_activity = activity.can_edit(request.user)
-        can_delete_activity = activity.can_delete(request.user)
-        can_close_activity = activity.can_close(request.user)
-        can_view_activity_dashboard = can_edit_activity or can_close_activity
+                    {% elif activity.is_full %}
+                        <button class="btn btn-secondary" disabled>
+                            <i class="fas fa-users me-2"></i>已满员
+                        </button>
+                    {% elif activity.status == 'cancelled' %}
+                        <button class="btn btn-dark" disabled>
+                            <i class="fas fa-ban me-2"></i>已关闭
+                        </button>
+                    {% elif activity.status == 'ended' %}
+                        <button class="btn btn-secondary" disabled>
+                            <i class="fas fa-clock me-2"></i>已结束
+                        </button>
+                    {% else %}
+                        <form method="post" action="{% url 'activities:join' activity.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus me-2"></i>立即报名
+                            </button>
+                        </form>
+                    {% endif %}
 
-    related_activities = Activity.objects.filter(
-        category=activity.category,
-        status__in=['upcoming', 'ongoing']
-    ).exclude(id=activity.id)[:3]
+                    {% if can_edit_activity %}
+                        <a href="{% url 'activities:edit' activity.id %}" class="btn btn-outline-primary">
+                            <i class="fas fa-edit me-2"></i>编辑
+                        </a>
+                    {% endif %}
 
-    comment_form = ActivityCommentForm()
+                    {% if can_delete_activity %}
+                        <a href="{% url 'activities:delete' activity.id %}" class="btn btn-outline-danger">
+                            <i class="fas fa-trash me-2"></i>删除
+                        </a>
+                    {% endif %}
 
-    activity_dashboard = None
-    top_participants = []
-    recent_participants = []
-    recent_checkins = []
-    pending_checkins = []
-    rejected_checkins = []
-    recent_moments = []
-    recent_activity_comments = []
+                    {% if can_close_activity and activity.status != 'cancelled' %}
+                        <form method="post" action="{% url 'activities:close' activity.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-dark">
+                                <i class="fas fa-ban me-2"></i>关闭活动
+                            </button>
+                        </form>
+                    {% endif %}
+                {% else %}
+                    <a href="{% url 'users:login' %}?next={{ request.path }}" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt me-2"></i>登录后报名
+                    </a>
+                {% endif %}
+            </div>
+        </div>
 
-    management_data = {
-        'participant_page': None,
-        'participant_keyword': '',
-        'participant_status': '',
-        'participant_querystring': '',
+        {% if can_view_activity_dashboard and activity_dashboard %}
+        <div class="glass-card mb-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-3">
+                <div>
+                    <h4 class="mb-1">
+                        <i class="fas fa-chart-line text-primary me-2"></i>活动数据面板
+                    </h4>
+                    <p class="text-muted mb-0">该面板仅活动创建者、活动管理员和总管理员可见</p>
+                </div>
+                <span class="badge bg-primary-subtle text-primary mt-2 mt-lg-0">管理视图</span>
+            </div>
 
-        'checkin_page': None,
-        'checkin_keyword': '',
-        'checkin_status': '',
-        'checkin_querystring': '',
+            <ul class="nav nav-tabs mb-3" id="activityDashboardTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab"
+                            data-bs-target="#overview-pane" type="button" role="tab">
+                        概览
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="participants-tab" data-bs-toggle="tab"
+                            data-bs-target="#participants-pane" type="button" role="tab">
+                        参与者
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="checkins-tab" data-bs-toggle="tab"
+                            data-bs-target="#checkins-pane" type="button" role="tab">
+                        打卡
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="social-tab" data-bs-toggle="tab"
+                            data-bs-target="#social-pane" type="button" role="tab">
+                        社交
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="charts-tab" data-bs-toggle="tab"
+                            data-bs-target="#charts-pane" type="button" role="tab">
+                        图表
+                    </button>
+                </li>
+            </ul>
 
-        'moment_page': None,
-        'moment_keyword': '',
-        'moment_querystring': '',
+            <div class="tab-content" id="activityDashboardTabsContent">
+                <!-- 概览 -->
+                <div class="tab-pane fade show active dashboard-tab-pane" id="overview-pane" role="tabpanel" aria-labelledby="overview-tab">
+                    <div class="mb-3">
+                        <small class="text-muted d-block mb-2">负责人</small>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge bg-light text-dark">
+                                创建者：{{ activity.creator.username }}
+                            </span>
+                            {% for manager in activity.managers.all %}
+                            <span class="badge bg-light text-dark">
+                                管理员：{{ manager.username }}
+                            </span>
+                            {% empty %}
+                            <span class="badge bg-secondary">暂无额外活动管理员</span>
+                            {% endfor %}
+                        </div>
+                    </div>
 
-        'comment_page': None,
-        'comment_keyword': '',
-        'comment_querystring': '',
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6 col-xl-3">
+                            <div class="card bg-primary text-white h-100">
+                                <div class="card-body">
+                                    <small>报名人数</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.total_registrations }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="card bg-success text-white h-100">
+                                <div class="card-body">
+                                    <small>通过打卡</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.approved_checkins }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="card bg-warning text-dark h-100">
+                                <div class="card-body">
+                                    <small>发放积分</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.total_points_sent }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="card bg-dark text-white h-100">
+                                <div class="card-body">
+                                    <small>关联动态</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.moment_count }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">报名占用率</small>
+                                    <small class="fw-bold">{{ activity_dashboard.fill_rate }}%</small>
+                                </div>
+                                <div class="progress mb-3" style="height: 10px;">
+                                    <div class="progress-bar bg-primary" style="width: {{ activity_dashboard.fill_rate }}%;"></div>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">打卡通过率</small>
+                                    <small class="fw-bold">{{ activity_dashboard.checkin_rate }}%</small>
+                                </div>
+                                <div class="progress mb-3" style="height: 10px;">
+                                    <div class="progress-bar bg-success" style="width: {{ activity_dashboard.checkin_rate }}%;"></div>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-1">
+                                    <small class="text-muted">活动完成率</small>
+                                    <small class="fw-bold">{{ activity_dashboard.completion_rate }}%</small>
+                                </div>
+                                <div class="progress" style="height: 10px;">
+                                    <div class="progress-bar bg-info" style="width: {{ activity_dashboard.completion_rate }}%;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6">
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>待参与</span>
+                                    <span class="badge bg-secondary">{{ activity_dashboard.registered_count }}</span>
+                                </li>
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>已打卡</span>
+                                    <span class="badge bg-info">{{ activity_dashboard.checked_in_count }}</span>
+                                </li>
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>已完成</span>
+                                    <span class="badge bg-success">{{ activity_dashboard.completed_count }}</span>
+                                </li>
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>已取消</span>
+                                    <span class="badge bg-dark">{{ activity_dashboard.cancelled_count }}</span>
+                                </li>
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>浏览次数</span>
+                                    <span class="badge bg-light text-dark">{{ activity_dashboard.view_count }}</span>
+                                </li>
+                                <li class="list-group-item bg-transparent d-flex justify-content-between px-0">
+                                    <span>活动评论</span>
+                                    <span class="badge bg-secondary">{{ activity_dashboard.activity_comment_count }}</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 参与者 -->
+                <div class="tab-pane fade dashboard-tab-pane" id="participants-pane" role="tabpanel" aria-labelledby="participants-tab">
+                    <div class="management-toolbar">
+                        <form method="get" class="management-toolbar-form">
+                            <div class="row g-2">
+                                <div class="col-md-5">
+                                    <input type="text" name="participant_q" value="{{ management_data.participant_keyword }}"
+                                           class="form-control form-control-sm" placeholder="搜索用户名/姓名/院系">
+                                </div>
+                                <div class="col-md-3">
+                                    <select name="participant_status" class="form-select form-select-sm">
+                                        <option value="">全部状态</option>
+                                        <option value="registered" {% if management_data.participant_status == 'registered' %}selected{% endif %}>已报名</option>
+                                        <option value="checked_in" {% if management_data.participant_status == 'checked_in' %}selected{% endif %}>已打卡</option>
+                                        <option value="completed" {% if management_data.participant_status == 'completed' %}selected{% endif %}>已完成</option>
+                                        <option value="cancelled" {% if management_data.participant_status == 'cancelled' %}selected{% endif %}>已取消</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="submit" class="btn btn-primary btn-sm w-100">筛选</button>
+                                </div>
+                                <div class="col-md-2">
+                                    <a href="{% url 'activities:detail' activity.id %}#participants-pane" class="btn btn-outline-secondary btn-sm w-100">重置</a>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div class="management-toolbar-actions">
+                            <a href="{% url 'activities:export_activity_participants_csv' activity.id %}?participant_q={{ management_data.participant_keyword|urlencode }}&participant_status={{ management_data.participant_status|urlencode }}"
+                               class="btn btn-outline-success btn-sm">
+                                导出 CSV
+                            </a>
+                            <a href="{% url 'activities:export_activity_participants_excel' activity.id %}?participant_q={{ management_data.participant_keyword|urlencode }}&participant_status={{ management_data.participant_status|urlencode }}"
+                               class="btn btn-success btn-sm">
+                                导出 Excel
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <h6 class="dashboard-section-title">参与者排行</h6>
+                            {% if top_participants %}
+                                {% for reg in top_participants %}
+                                <div class="border-bottom py-2 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">{{ reg.user.username }}</div>
+                                        <small class="text-muted">{{ reg.user.department|default:"未填写院系" }}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div><span class="badge bg-warning text-dark">{{ reg.user.points }}分</span></div>
+                                        <small class="text-muted">{{ reg.get_status_display }}</small>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted">暂无参与者数据</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-lg-6">
+                            <h6 class="dashboard-section-title">参与者列表</h6>
+                            {% if management_data.participant_page %}
+                                {% for reg in management_data.participant_page %}
+                                <div class="border rounded p-3 mb-3">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <div class="fw-semibold">{{ reg.user.username }}</div>
+                                            <small class="text-muted">
+                                                {{ reg.user.real_name|default:reg.user.username }} /
+                                                {{ reg.user.department|default:"未填写院系" }}
+                                            </small><br>
+                                            <small class="text-muted">{{ reg.registered_at|date:"m-d H:i" }}</small>
+                                        </div>
+                                        <span class="badge bg-light text-dark">{{ reg.get_status_display }}</span>
+                                    </div>
+
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        {% if reg.status != 'cancelled' and reg.status != 'completed' %}
+                                        <form method="post" action="{% url 'activities:manage_registration_cancel' activity.id reg.id %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">取消报名</button>
+                                        </form>
+                                        {% endif %}
+
+                                        {% if reg.status != 'completed' and reg.status != 'cancelled' %}
+                                        <form method="post" action="{% url 'activities:manage_registration_complete' activity.id reg.id %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-success">标记完成</button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+
+                                {% if management_data.participant_page.has_other_pages %}
+                                <nav>
+                                    <ul class="pagination pagination-sm">
+                                        {% if management_data.participant_page.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.participant_querystring }}&participant_page={{ management_data.participant_page.previous_page_number }}#participants-pane">上一页</a>
+                                        </li>
+                                        {% endif %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">{{ management_data.participant_page.number }}/{{ management_data.participant_page.paginator.num_pages }}</span>
+                                        </li>
+                                        {% if management_data.participant_page.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.participant_querystring }}&participant_page={{ management_data.participant_page.next_page_number }}#participants-pane">下一页</a>
+                                        </li>
+                                        {% endif %}
+                                    </ul>
+                                </nav>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-muted">暂无报名记录</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 打卡 -->
+                <div class="tab-pane fade dashboard-tab-pane" id="checkins-pane" role="tabpanel" aria-labelledby="checkins-tab">
+                    <div class="management-toolbar">
+                        <form method="get" class="management-toolbar-form">
+                            <div class="row g-2">
+                                <div class="col-md-5">
+                                    <input type="text" name="checkin_q" value="{{ management_data.checkin_keyword }}"
+                                           class="form-control form-control-sm" placeholder="搜索用户名或打卡备注">
+                                </div>
+                                <div class="col-md-3">
+                                    <select name="checkin_status" class="form-select form-select-sm">
+                                        <option value="">全部状态</option>
+                                        <option value="approved" {% if management_data.checkin_status == 'approved' %}selected{% endif %}>通过</option>
+                                        <option value="pending" {% if management_data.checkin_status == 'pending' %}selected{% endif %}>待审核</option>
+                                        <option value="rejected" {% if management_data.checkin_status == 'rejected' %}selected{% endif %}>拒绝</option>
+                                        <option value="revoked" {% if management_data.checkin_status == 'revoked' %}selected{% endif %}>已撤销</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="submit" class="btn btn-primary btn-sm w-100">筛选</button>
+                                </div>
+                                <div class="col-md-2">
+                                    <a href="{% url 'activities:detail' activity.id %}#checkins-pane" class="btn btn-outline-secondary btn-sm w-100">重置</a>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div class="management-toolbar-actions">
+                            <a href="{% url 'activities:export_activity_checkins_csv' activity.id %}?checkin_q={{ management_data.checkin_keyword|urlencode }}&checkin_status={{ management_data.checkin_status|urlencode }}"
+                               class="btn btn-outline-success btn-sm">
+                                导出 CSV
+                            </a>
+                            <a href="{% url 'activities:export_activity_checkins_excel' activity.id %}?checkin_q={{ management_data.checkin_keyword|urlencode }}&checkin_status={{ management_data.checkin_status|urlencode }}"
+                               class="btn btn-success btn-sm">
+                                导出 Excel
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white h-100">
+                                <div class="card-body">
+                                    <small>通过打卡</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.approved_checkins }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-dark h-100">
+                                <div class="card-body">
+                                    <small>待审核</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.pending_checkins }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-danger text-white h-100">
+                                <div class="card-body">
+                                    <small>已拒绝</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.rejected_checkins }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-dark text-white h-100">
+                                <div class="card-body">
+                                    <small>已撤销</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.revoked_checkins }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if management_data.checkin_page %}
+                        {% for checkin in management_data.checkin_page %}
+                        <div class="border rounded p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <div class="fw-semibold">{{ checkin.user.username }}</div>
+                                    <small class="text-muted">{{ checkin.created_at|date:"m-d H:i" }}</small>
+                                </div>
+
+                                {% if checkin.status == 'approved' %}
+                                    <span class="badge bg-success">通过</span>
+                                {% elif checkin.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">待审核</span>
+                                {% elif checkin.status == 'revoked' %}
+                                    <span class="badge bg-dark">已撤销</span>
+                                {% else %}
+                                    <span class="badge bg-danger">拒绝</span>
+                                {% endif %}
+                            </div>
+
+                            {% if checkin.remark %}
+                            <p class="text-muted small mb-2">{{ checkin.remark }}</p>
+                            {% endif %}
+
+                            {% if checkin.review_note %}
+                            <p class="small mb-2"><strong>审核备注：</strong>{{ checkin.review_note }}</p>
+                            {% endif %}
+
+                            <div class="small text-muted mb-2">
+                                积分：{{ checkin.points_earned }} 分
+                            </div>
+
+                            {% if checkin.status == 'approved' %}
+                            <div class="mt-3">
+                                <form method="post"
+                                      action="{% url 'activities:manage_checkin_revoke' activity.id checkin.id %}"
+                                      class="review-action-form"
+                                      data-action-label="撤销">
+                                    {% csrf_token %}
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">撤销原因</span>
+                                        <input
+                                            type="text"
+                                            name="note"
+                                            class="form-control reason-required"
+                                            placeholder="必填，例如：照片不符 / 误审通过 / 定位异常"
+                                            maxlength="200"
+                                            required
+                                        >
+                                        <button type="submit" class="btn btn-outline-dark">
+                                            撤销通过
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            {% endif %}  
+                        
+                            {% if checkin.status == 'pending' %}
+                            <div class="mt-3">
+                                <form method="post"
+                                      action="{% url 'activities:manage_checkin_approve' activity.id checkin.id %}"
+                                      class="mb-2 review-action-form"
+                                      data-action-label="通过">
+                                    {% csrf_token %}
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">通过备注</span>
+                                        <input type="text" name="note" class="form-control" placeholder="可选" maxlength="200">
+                                        <button type="submit" class="btn btn-success">通过</button>
+                                    </div>
+                                </form>
+
+                                <form method="post"
+                                      action="{% url 'activities:manage_checkin_reject' activity.id checkin.id %}"
+                                      class="review-action-form"
+                                      data-action-label="拒绝">
+                                    {% csrf_token %}
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">拒绝原因</span>
+                                        <input type="text" name="note" class="form-control reject-reason-input" placeholder="必填" maxlength="200" required>
+                                        <button type="submit" class="btn btn-outline-danger">拒绝</button>
+                                    </div>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+
+                        {% if management_data.checkin_page.has_other_pages %}
+                        <nav>
+                            <ul class="pagination pagination-sm">
+                                {% if management_data.checkin_page.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{{ management_data.checkin_querystring }}&checkin_page={{ management_data.checkin_page.previous_page_number }}#checkins-pane">上一页</a>
+                                </li>
+                                {% endif %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">{{ management_data.checkin_page.number }}/{{ management_data.checkin_page.paginator.num_pages }}</span>
+                                </li>
+                                {% if management_data.checkin_page.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?{{ management_data.checkin_querystring }}&checkin_page={{ management_data.checkin_page.next_page_number }}#checkins-pane">下一页</a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted">暂无打卡记录</p>
+                    {% endif %}
+                </div>
+
+                <!-- 社交 -->
+                <div class="tab-pane fade dashboard-tab-pane" id="social-pane" role="tabpanel" aria-labelledby="social-tab">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="card bg-dark text-white h-100">
+                                <div class="card-body">
+                                    <small>关联动态数</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.moment_count }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-primary text-white h-100">
+                                <div class="card-body">
+                                    <small>动态点赞数</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.moment_like_count }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-secondary text-white h-100">
+                                <div class="card-body">
+                                    <small>活动评论数</small>
+                                    <h3 class="mb-0">{{ activity_dashboard.activity_comment_count }}</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <div class="management-toolbar">
+                                <form method="get" class="management-toolbar-form">
+                                    <div class="row g-2">
+                                        <div class="col-8">
+                                            <input type="text" name="moment_q" value="{{ management_data.moment_keyword }}"
+                                                   class="form-control form-control-sm" placeholder="搜索动态内容或发布者">
+                                        </div>
+                                        <div class="col-2">
+                                            <button type="submit" class="btn btn-primary btn-sm w-100">筛选</button>
+                                        </div>
+                                        <div class="col-2">
+                                            <a href="{% url 'activities:detail' activity.id %}#social-pane" class="btn btn-outline-secondary btn-sm w-100">重置</a>
+                                        </div>
+                                    </div>
+                                </form>
+
+                                <div class="management-toolbar-actions">
+                                    <a href="{% url 'activities:export_activity_moments_csv' activity.id %}?moment_q={{ management_data.moment_keyword|urlencode }}"
+                                       class="btn btn-outline-success btn-sm">
+                                        导出 CSV
+                                    </a>
+                                    <a href="{% url 'activities:export_activity_moments_excel' activity.id %}?moment_q={{ management_data.moment_keyword|urlencode }}"
+                                       class="btn btn-success btn-sm">
+                                        导出 Excel
+                                    </a>
+                                </div>
+                            </div>
+
+                            <h6 class="dashboard-section-title">关联动态</h6>
+                            {% if management_data.moment_page %}
+                                {% for moment in management_data.moment_page %}
+                                <div class="border-bottom py-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="fw-semibold">{{ moment.user.username }}</span>
+                                        <small class="text-muted">{{ moment.created_at|date:"m-d H:i" }}</small>
+                                    </div>
+                                    <p class="text-muted small mb-1">{{ moment.content|truncatechars:80 }}</p>
+                                    <small class="text-muted">
+                                        <i class="fas fa-heart text-danger me-1"></i>{{ moment.like_count }} 点赞
+                                    </small>
+                                </div>
+                                {% endfor %}
+
+                                {% if management_data.moment_page.has_other_pages %}
+                                <nav class="mt-3">
+                                    <ul class="pagination pagination-sm">
+                                        {% if management_data.moment_page.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.moment_querystring }}&moment_page={{ management_data.moment_page.previous_page_number }}#social-pane">上一页</a>
+                                        </li>
+                                        {% endif %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">{{ management_data.moment_page.number }}/{{ management_data.moment_page.paginator.num_pages }}</span>
+                                        </li>
+                                        {% if management_data.moment_page.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.moment_querystring }}&moment_page={{ management_data.moment_page.next_page_number }}#social-pane">下一页</a>
+                                        </li>
+                                        {% endif %}
+                                    </ul>
+                                </nav>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-muted">暂无关联动态</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="management-toolbar">
+                                <form method="get" class="management-toolbar-form">
+                                    <div class="row g-2">
+                                        <div class="col-8">
+                                            <input type="text" name="comment_q" value="{{ management_data.comment_keyword }}"
+                                                   class="form-control form-control-sm" placeholder="搜索评论内容或评论者">
+                                        </div>
+                                        <div class="col-2">
+                                            <button type="submit" class="btn btn-primary btn-sm w-100">筛选</button>
+                                        </div>
+                                        <div class="col-2">
+                                            <a href="{% url 'activities:detail' activity.id %}#social-pane" class="btn btn-outline-secondary btn-sm w-100">重置</a>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <h6 class="dashboard-section-title">活动评论</h6>
+                            {% if management_data.comment_page %}
+                                {% for comment in management_data.comment_page %}
+                                <div class="border-bottom py-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="fw-semibold">{{ comment.user.username }}</span>
+                                        <small class="text-muted">{{ comment.created_at|date:"m-d H:i" }}</small>
+                                    </div>
+                                    <p class="text-muted small mb-0">{{ comment.content|truncatechars:80 }}</p>
+                                </div>
+                                {% endfor %}
+
+                                {% if management_data.comment_page.has_other_pages %}
+                                <nav class="mt-3">
+                                    <ul class="pagination pagination-sm">
+                                        {% if management_data.comment_page.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.comment_querystring }}&comment_page={{ management_data.comment_page.previous_page_number }}#social-pane">上一页</a>
+                                        </li>
+                                        {% endif %}
+                                        <li class="page-item disabled">
+                                            <span class="page-link">{{ management_data.comment_page.number }}/{{ management_data.comment_page.paginator.num_pages }}</span>
+                                        </li>
+                                        {% if management_data.comment_page.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?{{ management_data.comment_querystring }}&comment_page={{ management_data.comment_page.next_page_number }}#social-pane">下一页</a>
+                                        </li>
+                                        {% endif %}
+                                    </ul>
+                                </nav>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-muted">暂无活动评论</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表 -->
+                <div class="tab-pane fade dashboard-tab-pane" id="charts-pane" role="tabpanel" aria-labelledby="charts-tab">
+                    <div class="row g-4">
+                        <div class="col-12">
+                            <div class="glass-card chart-panel">
+                                <h6 class="dashboard-section-title">近7天报名 / 打卡趋势</h6>
+                                <canvas id="activityTrendChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="glass-card chart-panel">
+                                <h6 class="dashboard-section-title">报名状态分布</h6>
+                                <canvas id="registrationStatusChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="glass-card chart-panel">
+                                <h6 class="dashboard-section-title">打卡审核分布</h6>
+                                <canvas id="checkinStatusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{ activity_dashboard.trend_labels|json_script:"activity-trend-labels" }}
+            {{ activity_dashboard.registration_trend_data|json_script:"activity-registration-trend-data" }}
+            {{ activity_dashboard.checkin_trend_data|json_script:"activity-checkin-trend-data" }}
+            {{ activity_dashboard.registration_status_labels|json_script:"activity-registration-status-labels" }}
+            {{ activity_dashboard.registration_status_data|json_script:"activity-registration-status-data" }}
+            {{ activity_dashboard.checkin_status_labels|json_script:"activity-checkin-status-labels" }}
+            {{ activity_dashboard.checkin_status_data|json_script:"activity-checkin-status-data" }}
+        </div>
+        {% endif %}
+
+        <!-- 活动评论 -->
+        <div class="glass-card">
+            <h5 class="mb-3">
+                <i class="fas fa-comments text-primary me-2"></i>活动评论
+            </h5>
+
+            {% if user.is_authenticated %}
+            <form method="post" action="{% url 'activities:comment' activity.id %}" class="mb-4">
+                {% csrf_token %}
+                {{ comment_form.content }}
+                <div class="mt-2">
+                    <button type="submit" class="btn btn-primary btn-sm">发表评论</button>
+                </div>
+            </form>
+            {% else %}
+            <div class="alert alert-info">登录后可发表评论。</div>
+            {% endif %}
+
+            {% if comments %}
+                {% for comment in comments %}
+                <div class="comment-item">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div class="fw-semibold">{{ comment.user.username }}</div>
+                        <small class="text-muted">{{ comment.created_at|date:"Y-m-d H:i" }}</small>
+                    </div>
+                    <div class="text-muted">{{ comment.content }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <p class="text-muted mb-0">暂无评论，快来发表第一条评论吧！</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 右侧侧边栏 -->
+    <div class="col-lg-4">
+        <div class="activity-sidebar">
+            <div class="glass-card mb-4">
+                <h5 class="mb-3">发起人</h5>
+                <div class="d-flex align-items-center">
+                    <img src="{% if activity.creator.avatar %}{{ activity.creator.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}"
+                         class="avatar me-3"
+                         alt="{{ activity.creator.username }}"
+                         style="width: 50px; height: 50px;">
+                    <div>
+                        <h6 class="mb-0">{{ activity.creator.username }}</h6>
+                        <small class="text-muted">{{ activity.creator.department|default:'' }}</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <h5 class="mb-3">相关活动推荐</h5>
+                {% for related in related_activities %}
+                <div class="d-flex mb-3">
+                    <img src="{% if related.cover_image %}{{ related.cover_image.url }}{% else %}{% static 'images/default-activity.jpg' %}{% endif %}"
+                         class="rounded me-3"
+                         alt="{{ related.title }}"
+                         style="width: 80px; height: 60px; object-fit: cover;">
+                    <div>
+                        <h6 class="mb-1">
+                            <a href="{% url 'activities:detail' related.id %}" class="text-decoration-none">
+                                {{ related.title }}
+                            </a>
+                        </h6>
+                        <small class="text-muted">{{ related.start_time|date:"m月d日" }}</small>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-muted mb-0">暂无相关活动</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const forms = document.querySelectorAll('.review-action-form');
+
+    forms.forEach(function(form) {
+        form.addEventListener('submit', function (e) {
+            const actionLabel = form.dataset.actionLabel || '提交';
+            const requiredReasonInput = form.querySelector('.reason-required');
+
+            if (requiredReasonInput && !requiredReasonInput.value.trim()) {
+                e.preventDefault();
+                alert('请填写原因');
+                requiredReasonInput.focus();
+                return;
+            }
+
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = actionLabel + '中...';
+            }
+        });
+    });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const tabs = document.querySelectorAll('#activityDashboardTabs button[data-bs-toggle="tab"]');
+
+    tabs.forEach(function (tabBtn) {
+        tabBtn.addEventListener('shown.bs.tab', function () {
+            const target = tabBtn.getAttribute('data-bs-target');
+            if (target) {
+                history.replaceState(null, '', target);
+            }
+        });
+    });
+
+    const currentHash = window.location.hash;
+    if (currentHash) {
+        const trigger = document.querySelector('#activityDashboardTabs button[data-bs-target="' + currentHash + '"]');
+        if (trigger) {
+            const tab = new bootstrap.Tab(trigger);
+            tab.show();
+        }
+    }
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    let chartsInitialized = false;
+
+    function getJsonData(id) {
+        const el = document.getElementById(id);
+        if (!el) return [];
+        try {
+            return JSON.parse(el.textContent);
+        } catch (e) {
+            console.error('解析图表数据失败:', id, e);
+            return [];
+        }
     }
 
-    if can_view_activity_dashboard:
-        registrations = ActivityRegistration.objects.filter(
-            activity=activity
-        ).select_related('user').order_by('-registered_at')
-
-        active_registrations = registrations.exclude(status='cancelled')
-
-        checkins = CheckIn.objects.filter(
-            activity=activity
-        ).select_related('user').order_by('-created_at')
-
-        approved_checkins_qs = checkins.filter(status='approved')
-        pending_checkins_qs = checkins.filter(status='pending')
-        rejected_checkins_qs = checkins.filter(status='rejected')
-        revoked_checkins_qs = checkins.filter(status='revoked')
-
-        related_moments = Moment.objects.filter(
-            activity=activity
-        ).select_related('user').annotate(
-            like_count=Count('likes', distinct=True)
-        ).order_by('-created_at')
-
-        total_registrations = active_registrations.count()
-        registered_count = active_registrations.filter(status='registered').count()
-        checked_in_count = active_registrations.filter(status='checked_in').count()
-        completed_count = active_registrations.filter(status='completed').count()
-        cancelled_count = registrations.filter(status='cancelled').count()
-
-        approved_count = approved_checkins_qs.count()
-        pending_count = pending_checkins_qs.count()
-        rejected_count = rejected_checkins_qs.count()
-        revoked_count = revoked_checkins_qs.count()
-
-        total_points_sent = approved_checkins_qs.aggregate(
-            total=Sum('points_earned')
-        )['total'] or 0
-
-        total_moments = related_moments.count()
-        total_moment_likes = related_moments.aggregate(
-            total=Count('likes', distinct=True)
-        )['total'] or 0
-        total_activity_comments = activity.comments.count()
-        total_view_count = activity.view_count
-
-        fill_rate = 0
-        if activity.max_participants:
-            fill_rate = round((total_registrations / activity.max_participants) * 100, 1)
-
-        checkin_rate = 0
-        if total_registrations:
-            checkin_rate = round((approved_count / total_registrations) * 100, 1)
-
-        completion_rate = 0
-        if total_registrations:
-            completion_rate = round((completed_count / total_registrations) * 100, 1)
-
-        today = timezone.now().date()
-        trend_labels = []
-        registration_trend_data = []
-        checkin_trend_data = []
-
-        for i in range(6, -1, -1):
-            date = today - timedelta(days=i)
-            trend_labels.append(date.strftime('%m-%d'))
-            registration_trend_data.append(
-                registrations.filter(registered_at__date=date).count()
-            )
-            checkin_trend_data.append(
-                approved_checkins_qs.filter(created_at__date=date).count()
-            )
-
-        activity_dashboard = {
-            'total_registrations': total_registrations,
-            'registered_count': registered_count,
-            'checked_in_count': checked_in_count,
-            'completed_count': completed_count,
-            'cancelled_count': cancelled_count,
-            'approved_checkins': approved_count,
-            'pending_checkins': pending_count,
-            'rejected_checkins': rejected_count,
-            'revoked_checkins': revoked_count,
-            'total_points_sent': total_points_sent,
-            'moment_count': total_moments,
-            'moment_like_count': total_moment_likes,
-            'activity_comment_count': total_activity_comments,
-            'view_count': total_view_count,
-            'fill_rate': fill_rate,
-            'checkin_rate': checkin_rate,
-            'completion_rate': completion_rate,
-            'registration_status_labels': ['待参与', '已打卡', '已完成', '已取消'],
-            'registration_status_data': [
-                registered_count,
-                checked_in_count,
-                completed_count,
-                cancelled_count,
-            ],
-            'checkin_status_labels': ['通过', '待审核', '拒绝', '已撤销'],
-            'checkin_status_data': [
-                approved_count,
-                pending_count,
-                rejected_count,
-                revoked_count,
-            ],
-            'trend_labels': trend_labels,
-            'registration_trend_data': registration_trend_data,
-            'checkin_trend_data': checkin_trend_data,
+    function renderCharts() {
+        if (chartsInitialized) return;
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js 未加载');
+            return;
         }
 
-        top_participants = active_registrations.order_by('-user__points', '-registered_at')[:10]
-        recent_participants = registrations[:8]
-        recent_checkins = approved_checkins_qs[:8]
-        pending_checkins = pending_checkins_qs[:8]
-        rejected_checkins = rejected_checkins_qs[:8]
-        recent_moments = related_moments[:6]
-        recent_activity_comments = activity.comments.select_related('user').order_by('-created_at')[:6]
+        const trendCanvas = document.getElementById('activityTrendChart');
+        const registrationStatusCanvas = document.getElementById('registrationStatusChart');
+        const checkinStatusCanvas = document.getElementById('checkinStatusChart');
 
-        management_data = _build_activity_management_data(activity, request)
-
-    context = {
-        'activity': activity,
-        'is_registered': is_registered,
-        'can_checkin': can_checkin,
-        'registration': registration,
-        'related_activities': related_activities,
-        'comments': activity.comments.filter(parent=None),
-        'comment_form': comment_form,
-        'can_edit_activity': can_edit_activity,
-        'can_delete_activity': can_delete_activity,
-        'can_close_activity': can_close_activity,
-        'can_view_activity_dashboard': can_view_activity_dashboard,
-        'activity_dashboard': activity_dashboard,
-        'top_participants': top_participants,
-        'recent_participants': recent_participants,
-        'recent_checkins': recent_checkins,
-        'pending_checkins': pending_checkins,
-        'rejected_checkins': rejected_checkins,
-        'recent_moments': recent_moments,
-        'recent_activity_comments': recent_activity_comments,
-        'management_data': management_data,
-    }
-    return render(request, 'activities/detail.html', context)
-
-
-def _can_manage_activity(user, activity):
-    """活动创建者 / 活动管理员 / 总管理员 可管理该活动"""
-    if not user or not user.is_authenticated:
-        return False
-    return activity.can_edit(user) or activity.can_close(user)
-
-
-def _filtered_get_params(querydict, exclude_keys=None):
-    exclude_keys = exclude_keys or []
-    data = querydict.copy()
-    for key in exclude_keys:
-        if key in data:
-            del data[key]
-    return data.urlencode()
-
-
-def _build_activity_management_data(activity, request):
-    participant_keyword = request.GET.get('participant_q', '').strip()
-    participant_status = request.GET.get('participant_status', '').strip()
-    participant_page_number = request.GET.get('participant_page')
-
-    participant_qs = ActivityRegistration.objects.filter(
-        activity=activity
-    ).select_related('user').order_by('-registered_at')
-
-    if participant_keyword:
-        participant_qs = participant_qs.filter(
-            Q(user__username__icontains=participant_keyword) |
-            Q(user__real_name__icontains=participant_keyword) |
-            Q(user__department__icontains=participant_keyword)
-        )
-
-    if participant_status:
-        participant_qs = participant_qs.filter(status=participant_status)
-
-    participant_paginator = Paginator(participant_qs, 8)
-    participant_page = participant_paginator.get_page(participant_page_number)
-
-    checkin_keyword = request.GET.get('checkin_q', '').strip()
-    checkin_status = request.GET.get('checkin_status', '').strip()
-    checkin_page_number = request.GET.get('checkin_page')
-
-    checkin_qs = CheckIn.objects.filter(
-        activity=activity
-    ).select_related(
-        'user', 'reviewed_by'
-    ).prefetch_related(
-        'photos'
-    ).order_by('-created_at')
-
-    if checkin_keyword:
-        checkin_qs = checkin_qs.filter(
-            Q(user__username__icontains=checkin_keyword) |
-            Q(user__real_name__icontains=checkin_keyword) |
-            Q(remark__icontains=checkin_keyword) |
-            Q(review_note__icontains=checkin_keyword) |
-            Q(location_name__icontains=checkin_keyword)
-        )
-
-    if checkin_status:
-        checkin_qs = checkin_qs.filter(status=checkin_status)
-
-    checkin_paginator = Paginator(checkin_qs, 8)
-    checkin_page = checkin_paginator.get_page(checkin_page_number)
-
-    moment_keyword = request.GET.get('moment_q', '').strip()
-    moment_page_number = request.GET.get('moment_page')
-
-    moment_qs = Moment.objects.filter(
-        activity=activity
-    ).select_related(
-        'user'
-    ).prefetch_related(
-        'images'
-    ).annotate(
-        like_count=Count('likes', distinct=True),
-        comment_count=Count('comments', distinct=True)
-    ).order_by('-created_at')
-
-    if moment_keyword:
-        moment_qs = moment_qs.filter(
-            Q(user__username__icontains=moment_keyword) |
-            Q(content__icontains=moment_keyword)
-        )
-
-    moment_paginator = Paginator(moment_qs, 6)
-    moment_page = moment_paginator.get_page(moment_page_number)
-
-    comment_keyword = request.GET.get('comment_q', '').strip()
-    comment_page_number = request.GET.get('comment_page')
-
-    comment_qs = activity.comments.select_related('user').order_by('-created_at')
-
-    if comment_keyword:
-        comment_qs = comment_qs.filter(
-            Q(user__username__icontains=comment_keyword) |
-            Q(content__icontains=comment_keyword)
-        )
-
-    comment_paginator = Paginator(comment_qs, 6)
-    comment_page = comment_paginator.get_page(comment_page_number)
-
-    return {
-        'participant_page': participant_page,
-        'participant_keyword': participant_keyword,
-        'participant_status': participant_status,
-        'participant_querystring': _filtered_get_params(request.GET, ['participant_page']),
-
-        'checkin_page': checkin_page,
-        'checkin_keyword': checkin_keyword,
-        'checkin_status': checkin_status,
-        'checkin_querystring': _filtered_get_params(request.GET, ['checkin_page']),
-
-        'moment_page': moment_page,
-        'moment_keyword': moment_keyword,
-        'moment_querystring': _filtered_get_params(request.GET, ['moment_page']),
-
-        'comment_page': comment_page,
-        'comment_keyword': comment_keyword,
-        'comment_querystring': _filtered_get_params(request.GET, ['comment_page']),
-    }
-
-
-def _build_participant_action_json(activity, registration):
-    registrations = ActivityRegistration.objects.filter(activity=activity).select_related('user')
-    active_registrations = registrations.exclude(status='cancelled')
-
-    total_registrations = active_registrations.count()
-    registered_count = active_registrations.filter(status='registered').count()
-    checked_in_count = active_registrations.filter(status='checked_in').count()
-    completed_count = active_registrations.filter(status='completed').count()
-    cancelled_count = registrations.filter(status='cancelled').count()
-
-    fill_rate = 0
-    if activity.max_participants:
-        fill_rate = round((total_registrations / activity.max_participants) * 100, 1)
-
-    completion_rate = 0
-    if total_registrations:
-        completion_rate = round((completed_count / total_registrations) * 100, 1)
-
-    top_participants_qs = active_registrations.order_by('-user__points', '-registered_at')[:10]
-    top_participants = [
-        {
-            'username': reg.user.username,
-            'department': reg.user.department or '未填写院系',
-            'points': reg.user.points,
-            'status_display': reg.get_status_display(),
+        if (!trendCanvas || !registrationStatusCanvas || !checkinStatusCanvas) {
+            return;
         }
-        for reg in top_participants_qs
-    ]
 
-    return {
-        'success': True,
-        'registration': {
-            'id': registration.id,
-            'status': registration.status,
-            'status_display': registration.get_status_display(),
-        },
-        'stats': {
-            'total_registrations': total_registrations,
-            'registered_count': registered_count,
-            'checked_in_count': checked_in_count,
-            'completed_count': completed_count,
-            'cancelled_count': cancelled_count,
-            'fill_rate': fill_rate,
-            'completion_rate': completion_rate,
-        },
-        'top_participants': top_participants,
+        const trendLabels = getJsonData('activity-trend-labels');
+        const registrationTrendData = getJsonData('activity-registration-trend-data');
+        const checkinTrendData = getJsonData('activity-checkin-trend-data');
+        const registrationStatusLabels = getJsonData('activity-registration-status-labels');
+        const registrationStatusData = getJsonData('activity-registration-status-data');
+        const checkinStatusLabels = getJsonData('activity-checkin-status-labels');
+        const checkinStatusData = getJsonData('activity-checkin-status-data');
+
+        new Chart(trendCanvas, {
+            type: 'line',
+            data: {
+                labels: trendLabels,
+                datasets: [
+                    {
+                        label: '报名人数',
+                        data: registrationTrendData,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59,130,246,0.12)',
+                        fill: true,
+                        tension: 0.35
+                    },
+                    {
+                        label: '通过打卡',
+                        data: checkinTrendData,
+                        borderColor: '#10B981',
+                        backgroundColor: 'rgba(16,185,129,0.08)',
+                        fill: true,
+                        tension: 0.35
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0 }
+                    }
+                }
+            }
+        });
+
+        new Chart(registrationStatusCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: registrationStatusLabels,
+                datasets: [{
+                    data: registrationStatusData,
+                    backgroundColor: ['#6C757D', '#0DCAF0', '#198754', '#212529']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        new Chart(checkinStatusCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: checkinStatusLabels,
+                datasets: [{
+                    data: checkinStatusData,
+                    backgroundColor: ['#198754', '#FFC107', '#DC3545','#212529']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+
+        chartsInitialized = true;
     }
 
-
-def _build_checkin_action_json(activity, checkin):
-    approved_qs = CheckIn.objects.filter(activity=activity, status='approved')
-
-    return {
-        'success': True,
-        'checkin': {
-            'id': checkin.id,
-            'status': checkin.status,
-            'status_display': checkin.get_status_display(),
-            'points_earned': checkin.points_earned,
-            'review_note': checkin.review_note or '',
-            'reviewer_username': checkin.reviewed_by.username if checkin.reviewed_by else '',
-            'revoke_url': reverse('activities:manage_checkin_revoke', args=[activity.id, checkin.id]),
-        },
-        'stats': {
-            'approved': CheckIn.objects.filter(activity=activity, status='approved').count(),
-            'pending': CheckIn.objects.filter(activity=activity, status='pending').count(),
-            'rejected': CheckIn.objects.filter(activity=activity, status='rejected').count(),
-            'revoked': CheckIn.objects.filter(activity=activity, status='revoked').count(),
-            'total_points_sent': approved_qs.aggregate(total=Sum('points_earned'))['total'] or 0,
-        }
+    const chartsTab = document.getElementById('charts-tab');
+    if (chartsTab) {
+        chartsTab.addEventListener('shown.bs.tab', function () {
+            setTimeout(renderCharts, 80);
+        });
     }
 
-
-def _build_excel_response(sheet_title, headers, rows, filename, report_title='', filter_lines=None):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = sheet_title[:31]
-
-    total_cols = len(headers)
-    current_row = 1
-
-    if report_title:
-        ws.cell(row=current_row, column=1, value=report_title)
-        ws.merge_cells(
-            start_row=current_row,
-            start_column=1,
-            end_row=current_row,
-            end_column=total_cols
-        )
-        ws.cell(row=current_row, column=1).font = Font(bold=True, size=14)
-        ws.cell(row=current_row, column=1).alignment = Alignment(horizontal='center', vertical='center')
-        current_row += 1
-
-    filter_lines = filter_lines or []
-    for line in filter_lines:
-        ws.cell(row=current_row, column=1, value=line)
-        ws.merge_cells(
-            start_row=current_row,
-            start_column=1,
-            end_row=current_row,
-            end_column=total_cols
-        )
-        ws.cell(row=current_row, column=1).alignment = Alignment(horizontal='left', vertical='center')
-        current_row += 1
-
-    if report_title or filter_lines:
-        current_row += 1
-
-    header_row = current_row
-    for col_idx, header in enumerate(headers, start=1):
-        cell = ws.cell(row=header_row, column=col_idx, value=header)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-
-    for row in rows:
-        current_row += 1
-        for col_idx, value in enumerate(row, start=1):
-            ws.cell(row=current_row, column=col_idx, value=value)
-
-    ws.freeze_panes = f'A{header_row + 1}'
-    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(total_cols)}{header_row}"
-
-    for col_idx in range(1, total_cols + 1):
-        max_length = 0
-        col_letter = get_column_letter(col_idx)
-        for row_idx in range(1, current_row + 1):
-            value = ws.cell(row=row_idx, column=col_idx).value
-            value_str = '' if value is None else str(value)
-            max_length = max(max_length, len(value_str))
-        ws.column_dimensions[col_letter].width = min(max(max_length + 2, 12), 40)
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    response = HttpResponse(
-        output.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
-
-
-@login_required
-@require_POST
-def manage_registration_cancel(request, pk, registration_id):
-    """活动管理员取消某个报名"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    registration = get_object_or_404(
-        ActivityRegistration,
-        pk=registration_id,
-        activity=activity
-    )
-
-    if registration.status == 'cancelled':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '该报名已是取消状态。'}, status=400)
-        messages.warning(request, '该报名已是取消状态。')
-        return redirect('activities:detail', pk=pk)
-
-    if registration.status == 'completed':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '已完成的报名不能直接取消。'}, status=400)
-        messages.error(request, '已完成的报名不能直接取消。')
-        return redirect('activities:detail', pk=pk)
-
-    with transaction.atomic():
-        registration.status = 'cancelled'
-        registration.save(update_fields=['status'])
-
-        pending_checkin = getattr(registration, 'checkin', None)
-        if pending_checkin and pending_checkin.status == 'pending':
-            pending_checkin.status = 'rejected'
-            pending_checkin.reviewed_by = request.user
-            pending_checkin.review_note = '报名已被活动管理员取消'
-            pending_checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        payload = _build_participant_action_json(activity, registration)
-        payload['message'] = f'已取消 {registration.user.username} 的报名。'
-        return JsonResponse(payload)
-
-    messages.success(request, f'已取消 {registration.user.username} 的报名。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_registration_complete(request, pk, registration_id):
-    """活动管理员手动标记报名完成"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    registration = get_object_or_404(
-        ActivityRegistration,
-        pk=registration_id,
-        activity=activity
-    )
-
-    if registration.status == 'completed':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '该报名已经是完成状态。'}, status=400)
-        messages.warning(request, '该报名已经是完成状态。')
-        return redirect('activities:detail', pk=pk)
-
-    if registration.status == 'cancelled':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '已取消的报名不能标记为完成。'}, status=400)
-        messages.error(request, '已取消的报名不能标记为完成。')
-        return redirect('activities:detail', pk=pk)
-
-    registration.status = 'completed'
-    registration.save(update_fields=['status'])
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        payload = _build_participant_action_json(activity, registration)
-        payload['message'] = f'已将 {registration.user.username} 标记为完成。'
-        return JsonResponse(payload)
-
-    messages.success(request, f'已将 {registration.user.username} 标记为完成。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_checkin_approve(request, pk, checkin_id):
-    """活动管理员审核通过打卡"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(CheckIn, pk=checkin_id, activity=activity)
-
-    if checkin.status != 'pending':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '该打卡不是待审核状态，无法重复处理。'}, status=400)
-        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
-        return redirect('activities:detail', pk=pk)
-
-    review_note = request.POST.get('note', '').strip() or '活动管理员审核通过'
-
-    with transaction.atomic():
-        checkin.status = 'approved'
-        checkin.reviewed_by = request.user
-        checkin.review_note = review_note
-        checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
-
-        streak = calculate_continuous_days(checkin.user, checkin.activity)
-        points = award_points(
-            checkin.user,
-            activity=activity,
-            streak_days=streak,
-            related_checkin=checkin
-        )
-
-        checkin.points_earned = points
-        checkin.save(update_fields=['points_earned'])
-
-        checkin.registration.status = 'completed'
-        checkin.registration.save(update_fields=['status'])
-
-        Message.objects.create(
-            recipient=checkin.user,
-            sender=request.user,
-            message_type='activity',
-            title='打卡审核已通过',
-            content=f'你在活动《{activity.title}》中的打卡已审核通过，获得 {points} 积分。备注：{review_note}',
-            related_activity=activity
-        )
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        payload = _build_checkin_action_json(activity, checkin)
-        payload['message'] = f'已通过 {checkin.user.username} 的打卡申请。'
-        return JsonResponse(payload)
-
-    messages.success(request, f'已通过 {checkin.user.username} 的打卡申请。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_checkin_reject(request, pk, checkin_id):
-    """活动管理员驳回打卡"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(CheckIn, pk=checkin_id, activity=activity)
-
-    if checkin.status != 'pending':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '该打卡不是待审核状态，无法重复处理。'}, status=400)
-        messages.warning(request, '该打卡不是待审核状态，无法重复处理。')
-        return redirect('activities:detail', pk=pk)
-
-    review_note = request.POST.get('note', '').strip() or '活动管理员审核拒绝'
-
-    checkin.status = 'rejected'
-    checkin.reviewed_by = request.user
-    checkin.review_note = review_note
-    checkin.save(update_fields=['status', 'reviewed_by', 'review_note'])
-
-    checkin.registration.status = 'registered'
-    checkin.registration.save(update_fields=['status'])
-
-    Message.objects.create(
-        recipient=checkin.user,
-        sender=request.user,
-        message_type='activity',
-        title='打卡审核未通过',
-        content=f'你在活动《{activity.title}》中的打卡未通过审核。原因：{review_note}',
-        related_activity=activity
-    )
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        payload = _build_checkin_action_json(activity, checkin)
-        payload['message'] = f'已拒绝 {checkin.user.username} 的打卡申请。'
-        return JsonResponse(payload)
-
-    messages.success(request, f'已拒绝 {checkin.user.username} 的打卡申请。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_checkin_revoke(request, pk, checkin_id):
-    """活动管理员撤销已通过打卡，并回收积分"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin = get_object_or_404(
-        CheckIn.objects.select_related('user', 'registration', 'activity'),
-        pk=checkin_id,
-        activity=activity
-    )
-
-    if checkin.status != 'approved':
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '只有已通过的打卡才能撤销。'}, status=400)
-        messages.warning(request, '只有已通过的打卡才能撤销。')
-        return redirect('activities:detail', pk=pk)
-
-    revoke_note = request.POST.get('note', '').strip() or '活动管理员撤销通过'
-
-    with transaction.atomic():
-        deducted_points = int(checkin.points_earned or 0)
-
-        if deducted_points > 0:
-            checkin.user.add_points(
-                -deducted_points,
-                description=f'撤销活动《{activity.title}》打卡积分：{revoke_note}'
-            )
-
-        checkin.status = 'revoked'
-        checkin.reviewed_by = request.user
-        checkin.review_note = f'撤销通过：{revoke_note}'
-        checkin.points_earned = 0
-        checkin.save(update_fields=['status', 'reviewed_by', 'review_note', 'points_earned'])
-
-        checkin.registration.status = 'registered'
-        checkin.registration.save(update_fields=['status'])
-
-        Message.objects.create(
-            recipient=checkin.user,
-            sender=request.user,
-            message_type='activity',
-            title='打卡通过已被撤销',
-            content=f'你在活动《{activity.title}》中的已通过打卡已被管理员撤销。原因：{revoke_note}。已回收积分：{deducted_points} 分。',
-            related_activity=activity
-        )
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        payload = _build_checkin_action_json(activity, checkin)
-        payload['message'] = f'已撤销 {checkin.user.username} 的通过打卡，并回收 {deducted_points} 积分。'
-        return JsonResponse(payload)
-
-    messages.success(request, f'已撤销 {checkin.user.username} 的通过打卡，并回收 {deducted_points} 积分。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def manage_moment_delete(request, pk, moment_id):
-    """活动管理员删除关联动态（支持 AJAX 局部刷新）"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    moment = get_object_or_404(
-        Moment.objects.select_related('user'),
-        pk=moment_id,
-        activity=activity
-    )
-
-    owner = moment.user
-    preview = (moment.content or '')[:40]
-    moment.delete()
-
-    if owner != request.user:
-        Message.objects.create(
-            recipient=owner,
-            sender=request.user,
-            message_type='activity',
-            title='关联动态已被管理员删除',
-            content=f'你在活动《{activity.title}》中的动态已被管理员删除。内容片段：{preview}',
-            related_activity=activity
-        )
-
-    remaining_moment_count = Moment.objects.filter(activity=activity).count()
-    remaining_like_count = Moment.objects.filter(activity=activity).aggregate(
-        total=Count('likes', distinct=True)
-    )['total'] or 0
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({
-            'success': True,
-            'message': f'已删除 {owner.username} 的关联动态。',
-            'moment_id': moment_id,
-            'moment_count': remaining_moment_count,
-            'moment_like_count': remaining_like_count,
-        })
-
-    messages.success(request, f'已删除 {owner.username} 的关联动态。')
-    return redirect(f"{reverse('activities:detail', args=[pk])}#social-pane")
-
-
-@login_required
-@require_POST
-def manage_activity_comment_delete(request, pk, comment_id):
-    """活动管理员删除活动评论（支持 AJAX 局部刷新）"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({'success': False, 'message': '您没有权限管理此活动。'}, status=403)
-        messages.error(request, '您没有权限管理此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    comment = get_object_or_404(
-        ActivityComment.objects.select_related('user'),
-        pk=comment_id,
-        activity=activity
-    )
-
-    owner = comment.user
-    preview = (comment.content or '')[:40]
-    comment.delete()
-
-    if owner != request.user:
-        Message.objects.create(
-            recipient=owner,
-            sender=request.user,
-            message_type='activity',
-            title='活动评论已被管理员删除',
-            content=f'你在活动《{activity.title}》中的评论已被管理员删除。内容片段：{preview}',
-            related_activity=activity
-        )
-
-    remaining_comment_count = activity.comments.count()
-
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse({
-            'success': True,
-            'message': f'已删除 {owner.username} 的活动评论。',
-            'comment_id': comment_id,
-            'activity_comment_count': remaining_comment_count,
-        })
-
-    messages.success(request, f'已删除 {owner.username} 的活动评论。')
-    return redirect(f"{reverse('activities:detail', args=[pk])}#social-pane")
-
-
-@login_required
-def export_activity_participants_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    participant_keyword = request.GET.get('participant_q', '').strip()
-    participant_status = request.GET.get('participant_status', '').strip()
-
-    qs = ActivityRegistration.objects.filter(activity=activity).select_related('user').order_by('-registered_at')
-
-    if participant_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=participant_keyword) |
-            Q(user__real_name__icontains=participant_keyword) |
-            Q(user__department__icontains=participant_keyword)
-        )
-
-    if participant_status:
-        qs = qs.filter(status=participant_status)
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_participants.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['用户名', '姓名', '院系', '状态', '报名时间'])
-
-    for reg in qs:
-        writer.writerow([
-            reg.user.username,
-            reg.user.real_name,
-            reg.user.department,
-            reg.get_status_display(),
-            reg.registered_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
-
-
-@login_required
-def export_activity_checkins_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin_keyword = request.GET.get('checkin_q', '').strip()
-    checkin_status = request.GET.get('checkin_status', '').strip()
-
-    qs = CheckIn.objects.filter(activity=activity).select_related('user', 'reviewed_by').order_by('-created_at')
-
-    if checkin_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=checkin_keyword) |
-            Q(user__real_name__icontains=checkin_keyword) |
-            Q(remark__icontains=checkin_keyword)
-        )
-
-    if checkin_status:
-        qs = qs.filter(status=checkin_status)
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_checkins.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['用户名', '状态', '备注', '审核备注', '积分', '打卡时间'])
-
-    for checkin in qs:
-        writer.writerow([
-            checkin.user.username,
-            checkin.get_status_display(),
-            checkin.remark,
-            checkin.review_note,
-            checkin.points_earned,
-            checkin.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
-
-
-@login_required
-def export_activity_moments_csv(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    moment_keyword = request.GET.get('moment_q', '').strip()
-
-    qs = Moment.objects.filter(activity=activity).select_related('user').annotate(
-        like_count=Count('likes', distinct=True)
-    ).order_by('-created_at')
-
-    if moment_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=moment_keyword) |
-            Q(content__icontains=moment_keyword)
-        )
-
-    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    response['Content-Disposition'] = f'attachment; filename="activity_{activity.id}_moments.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(['发布者', '内容', '点赞数', '发布时间'])
-
-    for moment in qs:
-        writer.writerow([
-            moment.user.username,
-            moment.content,
-            moment.like_count,
-            moment.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return response
-
-
-@login_required
-def export_activity_participants_excel(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    participant_keyword = request.GET.get('participant_q', '').strip()
-    participant_status = request.GET.get('participant_status', '').strip()
-
-    qs = ActivityRegistration.objects.filter(
-        activity=activity
-    ).select_related('user').order_by('-registered_at')
-
-    if participant_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=participant_keyword) |
-            Q(user__real_name__icontains=participant_keyword) |
-            Q(user__department__icontains=participant_keyword)
-        )
-
-    if participant_status:
-        qs = qs.filter(status=participant_status)
-
-    status_display_map = dict(ActivityRegistration.STATUS_CHOICES)
-    filter_lines = [
-        f'活动：{activity.title}',
-        f'关键词：{participant_keyword or "无"}',
-        f'状态：{status_display_map.get(participant_status, "全部") if participant_status else "全部"}',
-        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
-    ]
-
-    rows = []
-    for reg in qs:
-        rows.append([
-            reg.user.username,
-            reg.user.real_name or '',
-            reg.user.department or '',
-            reg.get_status_display(),
-            reg.registered_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return _build_excel_response(
-        sheet_title='参与者',
-        headers=['用户名', '姓名', '院系', '状态', '报名时间'],
-        rows=rows,
-        filename=f'activity_{activity.id}_participants.xlsx',
-        report_title='活动参与者导出',
-        filter_lines=filter_lines
-    )
-
-
-@login_required
-def export_activity_checkins_excel(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    checkin_keyword = request.GET.get('checkin_q', '').strip()
-    checkin_status = request.GET.get('checkin_status', '').strip()
-
-    qs = CheckIn.objects.filter(
-        activity=activity
-    ).select_related('user', 'reviewed_by').prefetch_related('photos').order_by('-created_at')
-
-    if checkin_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=checkin_keyword) |
-            Q(user__real_name__icontains=checkin_keyword) |
-            Q(remark__icontains=checkin_keyword) |
-            Q(review_note__icontains=checkin_keyword) |
-            Q(location_name__icontains=checkin_keyword)
-        )
-
-    if checkin_status:
-        qs = qs.filter(status=checkin_status)
-
-    status_display_map = dict(CheckIn.STATUS_CHOICES)
-    filter_lines = [
-        f'活动：{activity.title}',
-        f'关键词：{checkin_keyword or "无"}',
-        f'状态：{status_display_map.get(checkin_status, "全部") if checkin_status else "全部"}',
-        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
-    ]
-
-    rows = []
-    for checkin in qs:
-        rows.append([
-            checkin.user.username,
-            checkin.get_status_display(),
-            checkin.remark or '',
-            checkin.location_name or '',
-            f'{checkin.latitude}, {checkin.longitude}',
-            checkin.accuracy,
-            checkin.reviewed_by.username if checkin.reviewed_by else '',
-            checkin.review_note or '',
-            checkin.points_earned,
-            checkin.photos.count(),
-            checkin.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return _build_excel_response(
-        sheet_title='打卡记录',
-        headers=['用户名', '状态', '打卡备注', '位置名称', '经纬度', '定位精度(米)', '审核人', '系统/审核备注', '积分', '照片数', '打卡时间'],
-        rows=rows,
-        filename=f'activity_{activity.id}_checkins.xlsx',
-        report_title='活动打卡记录导出',
-        filter_lines=filter_lines
-    )
-
-
-@login_required
-def export_activity_moments_excel(request, pk):
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not _can_manage_activity(request.user, activity):
-        messages.error(request, '您没有权限导出此活动数据。')
-        return redirect('activities:detail', pk=pk)
-
-    moment_keyword = request.GET.get('moment_q', '').strip()
-
-    qs = Moment.objects.filter(
-        activity=activity
-    ).select_related('user').prefetch_related('images').annotate(
-        like_count=Count('likes', distinct=True),
-        comment_count=Count('comments', distinct=True)
-    ).order_by('-created_at')
-
-    if moment_keyword:
-        qs = qs.filter(
-            Q(user__username__icontains=moment_keyword) |
-            Q(content__icontains=moment_keyword)
-        )
-
-    filter_lines = [
-        f'活动：{activity.title}',
-        f'关键词：{moment_keyword or "无"}',
-        f'导出时间：{timezone.now().strftime("%Y-%m-%d %H:%M:%S")}',
-    ]
-
-    rows = []
-    for moment in qs:
-        rows.append([
-            moment.user.username,
-            moment.content,
-            moment.like_count,
-            moment.comment_count,
-            moment.images.count(),
-            moment.created_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    return _build_excel_response(
-        sheet_title='关联动态',
-        headers=['发布者', '内容', '点赞数', '评论数', '图片数', '发布时间'],
-        rows=rows,
-        filename=f'activity_{activity.id}_moments.xlsx',
-        report_title='活动关联动态导出',
-        filter_lines=filter_lines
-    )
-
-
-@login_required
-def activity_create(request):
-    """创建活动视图：所有登录用户都可创建"""
-    if request.method == 'POST':
-        form = ActivityForm(request.POST, request.FILES)
-        if form.is_valid():
-            activity = form.save(commit=False)
-            activity.creator = request.user
-            activity.save()
-            form.save_m2m()
-            messages.success(request, '活动创建成功！')
-            return redirect('activities:detail', pk=activity.pk)
-        else:
-            messages.error(request, '创建失败，请检查填写信息。')
-    else:
-        form = ActivityForm()
-
-    categories = Category.objects.all()
-    return render(request, 'activities/create.html', {
-        'form': form,
-        'categories': categories
-    })
-
-
-@login_required
-def activity_edit(request, pk):
-    """编辑活动视图：创建者和活动管理者可编辑；总管理员不能编辑"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not activity.can_edit(request.user):
-        messages.error(request, '您没有权限编辑此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    if request.method == 'POST':
-        form = ActivityForm(request.POST, request.FILES, instance=activity)
-        if form.is_valid():
-            form.save()
-            messages.success(request, '活动更新成功！')
-            return redirect('activities:detail', pk=pk)
-        else:
-            print("===== form.errors.as_json =====")
-            print(form.errors.as_json())
-            print("===== form.non_field_errors =====")
-            print(form.non_field_errors())
-            messages.error(request, '更新失败，请检查填写信息。')
-    else:
-        form = ActivityForm(instance=activity)
-
-    categories = Category.objects.all()
-    return render(request, 'activities/edit.html', {
-        'form': form,
-        'categories': categories,
-        'activity': activity
-    })
-
-
-@login_required
-def activity_delete(request, pk):
-    """删除活动视图：只有创建者可删除"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not activity.can_delete(request.user):
-        messages.error(request, '只有活动创建者可以删除此活动。')
-        return redirect('activities:detail', pk=pk)
-
-    if request.method == 'POST':
-        activity.delete()
-        messages.success(request, '活动已删除。')
-        return redirect('activities:list')
-
-    return render(request, 'activities/delete_confirm.html', {'activity': activity})
-
-
-@login_required
-@require_POST
-def close_activity(request, pk):
-    """总管理员关闭活动：只能关闭，不能编辑"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if not activity.can_close(request.user):
-        messages.error(request, '只有总管理员可以关闭活动。')
-        return redirect('activities:detail', pk=pk)
-
-    activity.status = 'cancelled'
-    activity.closed_by = request.user
-    activity.closed_at = timezone.now()
-    activity.save(update_fields=['status', 'closed_by', 'closed_at'])
-
-    messages.success(request, '活动已被管理员关闭。')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def join_activity(request, pk):
-    """报名参加活动"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    if activity.is_full:
-        messages.error(request, '活动已满员')
-        return redirect('activities:detail', pk=pk)
-
-    if activity.status != 'upcoming':
-        messages.error(request, '活动当前不在报名阶段')
-        return redirect('activities:detail', pk=pk)
-
-    if ActivityRegistration.objects.filter(user=request.user, activity=activity).exists():
-        messages.warning(request, '您已经报名了此活动')
-        return redirect('activities:detail', pk=pk)
-
-    ActivityRegistration.objects.create(
-        user=request.user,
-        activity=activity
-    )
-
-    messages.success(request, f'报名成功！本活动可获得 {activity.points} 积分')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def cancel_registration(request, pk):
-    """取消报名"""
-    activity = get_object_or_404(Activity, pk=pk)
-
-    registration = ActivityRegistration.objects.filter(
-        user=request.user,
-        activity=activity
-    ).first()
-
-    if not registration:
-        messages.error(request, '您尚未报名此活动')
-        return redirect('activities:detail', pk=pk)
-
-    if registration.status != 'registered':
-        messages.error(request, '当前状态无法取消报名')
-        return redirect('activities:detail', pk=pk)
-
-    registration.delete()
-    messages.success(request, '取消报名成功')
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-@require_POST
-def add_comment(request, pk):
-    """添加评论"""
-    activity = get_object_or_404(Activity, pk=pk)
-    form = ActivityCommentForm(request.POST)
-
-    if form.is_valid():
-        comment = form.save(commit=False)
-        comment.activity = activity
-        comment.user = request.user
-        comment.save()
-        messages.success(request, '评论发表成功！')
-    else:
-        messages.error(request, '评论发表失败。')
-
-    return redirect('activities:detail', pk=pk)
-
-
-@login_required
-def my_activities(request):
-    """我的活动"""
-    activity_type = request.GET.get('type', 'created')
-
-    if activity_type == 'created':
-        activities = Activity.objects.filter(creator=request.user)
-    elif activity_type == 'joined':
-        activities = Activity.objects.filter(
-            participants__user=request.user,
-            participants__status__in=['registered', 'checked_in', 'completed']
-        ).distinct()
-    elif activity_type == 'checked':
-        activity_ids = CheckIn.objects.filter(user=request.user).values_list('activity_id', flat=True)
-        activities = Activity.objects.filter(id__in=activity_ids)
-    else:
-        activities = Activity.objects.filter(creator=request.user)
-
-    return render(request, 'activities/my_activities.html', {
-        'activities': activities,
-        'current_type': activity_type,
-        'user': request.user
-    })
-
-
-from rest_framework import viewsets, permissions
-from .serializers import ActivitySerializer, ActivityRegistrationSerializer
-
-
-class ActivityViewSet(viewsets.ModelViewSet):
-    """活动API视图集"""
-    queryset = Activity.objects.filter(status__in=['upcoming', 'ongoing'])
-    serializer_class = ActivitySerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_create(self, serializer):
-        serializer.save(creator=self.request.user)
-
-
-class ActivityRegistrationViewSet(viewsets.ModelViewSet):
-    """活动报名API视图集"""
-    queryset = ActivityRegistration.objects.all()
-    serializer_class = ActivityRegistrationSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        return ActivityRegistration.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    if (window.location.hash === '#charts-pane') {
+        setTimeout(renderCharts, 120);
+    }
+});
+</script>
+{% endblock %}

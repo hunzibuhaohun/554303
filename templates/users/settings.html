@@ -1,239 +1,288 @@
+{% extends 'base.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>设置 - 校园打卡平台</title>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <style>
-        .settings-section {
-            margin-bottom: 2rem;
-            padding-bottom: 2rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .settings-section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-        .section-title {
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+
+{% block title %}设置 - 校园打卡平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-wrap {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .settings-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 1rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .settings-header::before {
+        content: "";
+        position: absolute;
+        top: -40%;
+        right: -8%;
+        width: 240px;
+        height: 240px;
+        background: rgba(255,255,255,0.12);
+        border-radius: 50%;
+    }
+
+    .settings-header > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .settings-icon {
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.16);
+        margin-bottom: 1rem;
+        font-size: 2.2rem;
+    }
+
+    .settings-card {
+        background: rgba(255,255,255,0.97);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+    }
+
+    .settings-section {
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .settings-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+    }
+
+    .section-title {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .setting-item {
+        background: #f8fafc;
+        border-radius: 0.9rem;
+        padding: 1rem 1.2rem;
+        margin-bottom: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .setting-info h4 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+        color: #111827;
+    }
+
+    .setting-info p {
+        margin: 0;
+        color: #6b7280;
+        font-size: 0.92rem;
+    }
+
+    .form-check.form-switch {
+        margin: 0;
+        min-width: 60px;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .form-check-input {
+        width: 3rem;
+        height: 1.6rem;
+        cursor: pointer;
+    }
+
+    .security-btn {
+        min-width: 92px;
+    }
+
+    .form-control {
+        border-radius: 0.75rem;
+    }
+
+    .bottom-actions {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 2rem;
+        flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
         .setting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            background: #f8fafc;
-            border-radius: 0.75rem;
-            margin-bottom: 0.75rem;
+            flex-direction: column;
+            align-items: flex-start;
         }
-        .setting-info h4 {
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 0.25rem;
+
+        .form-check.form-switch {
+            justify-content: flex-start;
         }
-        .setting-info p {
-            font-size: 0.875rem;
-            color: var(--text-light);
-        }
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 24px;
-            background: var(--border);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-        .toggle-switch.active {
-            background: var(--primary);
-        }
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.3s ease;
-        }
-        .toggle-switch.active::after {
-            transform: translateX(24px);
-        }
-        .danger-zone {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-        }
-        .danger-zone h3 {
-            color: #dc2626;
-            margin-bottom: 0.5rem;
-        }
-        .danger-zone p {
-            color: #991b1b;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-        }
-        .btn-danger {
-            background: #dc2626;
-            color: white;
-        }
-        .btn-danger:hover {
-            background: #b91c1c;
-        }
-        .success-message {
-            background: #dcfce7;
-            color: #16a34a;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            display: none;
-        }
-        .success-message.show {
-            display: block;
-        }
-    </style>
-</head>
-<body>
-    <!-- 导航栏 -->
-    <nav class="navbar">
-        <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
-            <a href="/" class="navbar-brand">校园打卡</a>
-            <div style="display: flex; gap: 0.5rem;">
-                <a href="/" class="nav-link">🏠 首页</a>
-                <a href="/activities/" class="nav-link">🎯 活动广场</a>
-                <a href="/moments/" class="nav-link">💬 动态</a>
-                <a href="/users/profile/" class="nav-link active">👤 个人中心</a>
-            </div>
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-wrap">
+    <div class="settings-header">
+        <div class="settings-icon">
+            <i class="fas fa-cog"></i>
         </div>
-    </nav>
-
-    <!-- 主内容 -->
-    <div class="main-container">
-        <div class="register-container" style="max-width: 700px;">
-            <div class="card">
-                <div class="register-header">
-                    <div class="register-icon">⚙️</div>
-                    <h1 class="register-title">设置</h1>
-                    <p class="register-subtitle">管理您的账户设置和偏好</p>
-                </div>
-                
-                <div class="card-body" style="padding-top: 0;">
-                    <div id="successMsg" class="success-message">
-                        ✅ 设置已保存
-                    </div>
-
-                    <!-- 通知设置 -->
-                    <div class="settings-section">
-                        <h3 class="section-title">🔔 通知设置</h3>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>活动提醒</h4>
-                                <p>接收即将开始活动的提醒通知</p>
-                            </div>
-                            <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
-                        </div>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>打卡提醒</h4>
-                                <p>每日打卡时间提醒</p>
-                            </div>
-                            <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
-                        </div>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>系统公告</h4>
-                                <p>接收平台更新和重要公告</p>
-                            </div>
-                            <div class="toggle-switch" onclick="toggleSwitch(this)"></div>
-                        </div>
-                    </div>
-
-                    <!-- 隐私设置 -->
-                    <div class="settings-section">
-                        <h3 class="section-title">🔒 隐私设置</h3>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>公开个人资料</h4>
-                                <p>允许其他用户查看您的个人资料</p>
-                            </div>
-                            <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
-                        </div>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>显示打卡记录</h4>
-                                <p>在个人主页展示打卡历史</p>
-                            </div>
-                            <div class="toggle-switch active" onclick="toggleSwitch(this)"></div>
-                        </div>
-                    </div>
-
-                    <!-- 账户安全 -->
-                    <div class="settings-section">
-                        <h3 class="section-title">🛡️ 账户安全</h3>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>修改密码</h4>
-                                <p>定期更换密码保护账户安全</p>
-                            </div>
-                            <a href="/users/password/change/" class="btn btn-secondary btn-sm">修改</a>
-                        </div>
-                        <div class="setting-item">
-                            <div class="setting-info">
-                                <h4>绑定手机</h4>
-                                <p>已绑定: {{ user.phone|default:"未绑定" }}</p>
-                            </div>
-                            <a href="/users/phone/bind/" class="btn btn-secondary btn-sm">更换</a>
-                        </div>
-                    </div>
-
-                    <!-- 危险区域 -->
-                    <div class="danger-zone">
-                        <h3>⚠️ 危险区域</h3>
-                        <p>删除账户后，所有数据将无法恢复，请谨慎操作。</p>
-                        <button class="btn btn-danger" onclick="confirmDelete()">删除账户</button>
-                    </div>
-
-                    <div style="margin-top: 1.5rem; text-align: center;">
-                        <a href="/users/profile/" class="back-link">← 返回个人中心</a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <h1 class="mb-2">设置</h1>
+        <p class="mb-0">管理您的账户设置和偏好</p>
     </div>
 
-    <script>
-        function toggleSwitch(element) {
-            element.classList.toggle('active');
-            // 显示保存成功提示
-            const msg = document.getElementById('successMsg');
-            msg.classList.add('show');
-            setTimeout(() => {
-                msg.classList.remove('show');
-            }, 2000);
-            
-            // 这里可以添加 AJAX 请求保存设置到后端
-            console.log('设置已更改');
-        }
+    <div class="settings-card">
+        <form method="post">
+            {% csrf_token %}
 
-        function confirmDelete() {
-            if (confirm('确定要删除账户吗？此操作不可恢复！')) {
-                if (confirm('再次确认：删除后所有数据将被清空，确定继续？')) {
-                    window.location.href = '/users/delete-account/';
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+            <div class="settings-section">
+                <h3 class="section-title">
+                    <i class="fas fa-bell text-warning"></i>通知设置
+                </h3>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>活动提醒</h4>
+                        <p>接收即将开始活动的提醒通知</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        {{ form.notify_activity }}
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>打卡提醒</h4>
+                        <p>每日打卡时间提醒</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        {{ form.notify_checkin }}
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>系统公告</h4>
+                        <p>接收平台更新和重要公告</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        {{ form.notify_system }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3 class="section-title">
+                    <i class="fas fa-lock text-warning"></i>隐私设置
+                </h3>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>公开个人资料</h4>
+                        <p>允许其他用户查看您的个人资料</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        {{ form.public_profile }}
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>显示打卡记录</h4>
+                        <p>在个人主页展示打卡历史</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        {{ form.show_checkin }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3 class="section-title">
+                    <i class="fas fa-envelope text-primary"></i>账户信息
+                </h3>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">邮箱</label>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                        <div class="text-danger small mt-1">{{ form.email.errors }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">手机号</label>
+                    {{ form.phone }}
+                    {% if form.phone.errors %}
+                        <div class="text-danger small mt-1">{{ form.phone.errors }}</div>
+                    {% endif %}
+                </div>
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="settings-section">
+                <h3 class="section-title">
+                    <i class="fas fa-shield-alt text-info"></i>账户安全
+                </h3>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>修改密码</h4>
+                        <p>定期更换密码保护账户安全</p>
+                    </div>
+                    <a href="{% url 'users:change_password' %}" class="btn btn-outline-primary security-btn">
+                        修改
+                    </a>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <h4>绑定手机</h4>
+                        <p>当前状态：{{ user.phone|default:"未绑定" }}</p>
+                    </div>
+                    <a href="{% url 'users:bind_phone' %}" class="btn btn-outline-primary security-btn">
+                        更换
+                    </a>
+                </div>
+            </div>
+
+            <div class="bottom-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-2"></i>保存设置
+                </button>
+                <a href="{% url 'users:profile' %}" class="btn btn-outline-secondary">
+                    返回个人中心
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

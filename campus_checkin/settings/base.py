@@ -1,26 +1,31 @@
+
 """
 Django基础设置 - 校园打卡平台
+说明：
+1. 以 SQLite 本地演示为优先目标。
+2. 默认不依赖 Redis，避免毕业设计演示环境额外安装服务。
 """
 import os
-import environ
 from pathlib import Path
+from datetime import timedelta
 
-# 项目根目录
+import environ
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
 
-# 加载环境变量
 env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
-# 安全设置
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-change-me-in-production')
 DEBUG = env('DEBUG', default=True)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 
-# 应用定义
 DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -50,7 +55,6 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# 中间件
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -63,10 +67,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# URL配置
 ROOT_URLCONF = 'campus_checkin.urls'
 
-# 模板配置
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -83,55 +85,39 @@ TEMPLATES = [
     },
 ]
 
-# WSGI应用
 WSGI_APPLICATION = 'campus_checkin.wsgi.application'
 ASGI_APPLICATION = 'campus_checkin.asgi.application'
 
-# 数据库配置
 DATABASES = {
-    'default': env.db(default='sqlite:///db.sqlite3')
+    'default': env.db(default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
 }
 
-# 密码验证
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-        'OPTIONS': {'min_length': 8}
+        'OPTIONS': {'min_length': 8},
     },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# 国际化
 LANGUAGE_CODE = 'zh-hans'
 TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 USE_TZ = True
 
-# 静态文件
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# 媒体文件
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# 默认主键类型
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# 自定义用户模型
 AUTH_USER_MODEL = 'users.User'
 
-# Django REST Framework配置
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -148,50 +134,40 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',
-        'user': '1000/day'
+        'user': '1000/day',
     },
 }
 
-# JWT配置
-from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
 }
 
-# Redis缓存配置
+# 毕设演示环境默认使用本地缓存，避免 Redis 依赖。
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'campus-checkin-local-cache',
     }
 }
 
-# Celery配置
-CELERY_BROKER_URL = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
-CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-
-# Channels配置
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [env('REDIS_URL', default='redis://127.0.0.1:6379/0')],
-        },
-    },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
 }
 
-# 日志配置
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='memory://')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='cache+memory://')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -205,7 +181,7 @@ LOGGING = {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
+            'filename': LOG_DIR / 'django.log',
             'formatter': 'verbose',
         },
         'console': {
@@ -222,14 +198,12 @@ LOGGING = {
     },
 }
 
-# 高德地图API配置
+CORS_ALLOW_ALL_ORIGINS = True
 AMAP_KEY = env('AMAP_KEY', default='')
 
-# 文件上传限制
-DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
-# 登录重定向
 LOGIN_URL = '/users/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'

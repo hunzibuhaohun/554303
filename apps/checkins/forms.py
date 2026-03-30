@@ -31,7 +31,6 @@ class CheckInForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
 
-        # 活动选项：允许 registered / checked_in 状态继续参与校验
         if user:
             registrations = ActivityRegistration.objects.filter(
                 user=user,
@@ -44,8 +43,6 @@ class CheckInForm(forms.ModelForm):
             ]
 
         self.fields['activity'].required = True
-
-        # 位置可选
         self.fields['latitude'].required = False
         self.fields['longitude'].required = False
         self.fields['accuracy'].required = False
@@ -77,13 +74,22 @@ class CheckInForm(forms.ModelForm):
         except ActivityRegistration.DoesNotExist:
             raise forms.ValidationError('您没有报名此活动或当前状态不可打卡')
 
-        # 检查今天是否已打卡
-        if CheckIn.objects.filter(
-                user=self.user,
-                activity=activity,
-                check_in_date=timezone.now().date()
-        ).exclude(status='revoked').exists():
-            raise forms.ValidationError('您今天已经打过卡了')
+        today = timezone.localdate()
+
+        # 只拦截“待审核 / 已通过”
+        # 已拒绝 rejected、已撤销 revoked 允许当天重新提交
+        existing_checkin = CheckIn.objects.filter(
+            user=self.user,
+            activity=activity,
+            check_in_date=today,
+            status__in=['pending', 'approved']
+        ).first()
+
+        if existing_checkin:
+            if existing_checkin.status == 'pending':
+                raise forms.ValidationError('您今天对该活动的打卡已提交，正在审核中，请勿重复提交')
+            if existing_checkin.status == 'approved':
+                raise forms.ValidationError('您今天对该活动的打卡已审核通过，不能重复打卡')
 
         return cleaned_data
 
@@ -92,7 +98,6 @@ class CheckInForm(forms.ModelForm):
         checkin.user = self.user
         checkin.registration = self.cleaned_data['registration']
 
-        # 位置默认值
         if checkin.latitude in [None, '']:
             checkin.latitude = 0
         if checkin.longitude in [None, '']:

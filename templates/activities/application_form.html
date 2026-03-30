@@ -1,0 +1,26 @@
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h3 class="mb-0">提交活动申请</h3>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">普通学生不能直接创建活动。请填写申请信息，平台管理员审核通过后，系统会自动创建活动并授予你活动管理员权限。</p>
+          <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="d-flex gap-2 mt-3">
+              <button type="submit" class="btn btn-primary">提交申请</button>
+              <a href="{% url 'activities:application_list' %}" class="btn btn-outline-secondary">查看我的申请</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

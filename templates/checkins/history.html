@@ -1,103 +1,444 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}打卡记录 - 校园打卡平台{% endblock %}
+{% block title %}我的打卡记录 - 校园打卡平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .history-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .history-header::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        right: -8%;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.10);
+    }
+
+    .history-header h1,
+    .history-header p,
+    .history-header .header-actions {
+        position: relative;
+        z-index: 1;
+    }
+
+    .header-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .record-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .record-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        overflow: hidden;
+        border: none;
+    }
+
+    .record-main {
+        padding: 1.25rem 1.25rem 1rem;
+    }
+
+    .record-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .record-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.3rem;
+    }
+
+    .record-meta {
+        color: #6b7280;
+        font-size: 0.92rem;
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .status-approved {
+        background: #dcfce7;
+        color: #15803d;
+    }
+
+    .status-pending {
+        background: #fef3c7;
+        color: #b45309;
+    }
+
+    .status-rejected {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+
+    .status-revoked {
+        background: #e5e7eb;
+        color: #4b5563;
+    }
+
+    .record-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.9rem;
+        margin-top: 1rem;
+    }
+
+    .info-box {
+        background: #f8fafc;
+        border-radius: 0.85rem;
+        padding: 0.9rem 1rem;
+    }
+
+    .info-label {
+        font-size: 0.84rem;
+        color: #6b7280;
+        margin-bottom: 0.35rem;
+    }
+
+    .info-value {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .note-box {
+        margin-top: 1rem;
+        border-radius: 0.9rem;
+        padding: 1rem 1rem;
+    }
+
+    .note-box p {
+        margin: 0;
+    }
+
+    .note-approved {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #166534;
+    }
+
+    .note-pending {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+    }
+
+    .note-rejected {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+
+    .note-revoked {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        color: #374151;
+    }
+
+    .record-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .record-footer {
+        padding: 0.95rem 1.25rem;
+        background: #fafafa;
+        border-top: 1px solid #f1f5f9;
+        color: #6b7280;
+        font-size: 0.9rem;
+    }
+
+    .empty-card {
+        background: rgba(255,255,255,0.96);
+        border-radius: 1rem;
+        padding: 3rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+
+    .empty-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .pagination-wrap {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .pagination {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .page-link-custom {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 42px;
+        height: 42px;
+        padding: 0 0.9rem;
+        border-radius: 0.75rem;
+        text-decoration: none;
+        background: white;
+        color: #374151;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    }
+
+    .page-link-custom.active {
+        background: #6366f1;
+        color: white;
+        font-weight: 700;
+    }
+
+    .tip-bar {
+        margin-bottom: 1rem;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        padding: 0.9rem 1rem;
+        border-radius: 0.9rem;
+    }
+
+    @media (max-width: 992px) {
+        .record-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .record-top {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .header-actions,
+        .record-actions {
+            flex-direction: column;
+        }
+
+        .header-actions .btn,
+        .record-actions .btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="glass-card">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fas fa-history text-primary me-2"></i>打卡记录</h2>
-        <a href="{% url 'checkins:checkin' %}" class="btn btn-primary">
-            <i class="fas fa-camera me-2"></i>去打卡
-        </a>
+<div class="history-header">
+    <h1 class="mb-2">📝 我的打卡记录</h1>
+    <p class="mb-0">查看每次活动打卡的审核状态、积分结果与处理备注。</p>
+    <div class="header-actions">
+        <a href="{% url 'checkins:checkin' %}" class="btn btn-light">立即去打卡</a>
+        <a href="{% url 'users:profile' %}" class="btn btn-outline-light">返回个人中心</a>
     </div>
-    
-    {% if checkins %}
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>活动</th>
-                    <th>打卡时间</th>
-                    <th>状态</th>
-                    <th>获得积分</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for checkin in checkins %}
-                <tr>
-                    <td>
-                        <a href="{% url 'activities:detail' checkin.activity.id %}" class="text-decoration-none">
-                            {{ checkin.activity.title }}
-                        </a>
-                    </td>
-                    <td>{{ checkin.created_at|date:"Y-m-d H:i" }}</td>
-                    <td>
-                        {% if checkin.status == 'approved' %}
-                        <span class="badge bg-success">已通过</span>
-                        {% elif checkin.status == 'pending' %}
-                        <span class="badge bg-warning text-dark">待审核</span>
-                        {% else %}
-                        <span class="badge bg-danger">已拒绝</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if checkin.status == 'approved' %}
-                        <span class="text-success">+{{ checkin.points_earned }}</span>
-                        {% else %}
-                        <span class="text-muted">-</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <a href="{% url 'checkins:detail' checkin.id %}" class="btn btn-sm btn-outline-primary">
-                            <i class="fas fa-eye"></i>
-                        </a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    
-    <!-- 分页 -->
-    {% if checkins.has_other_pages %}
-    <nav aria-label="Page navigation" class="mt-4">
-        <ul class="pagination justify-content-center">
-            {% if checkins.has_previous %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ checkins.previous_page_number }}">上一页</a>
-            </li>
-            {% endif %}
-            
-            {% for num in checkins.paginator.page_range %}
-                {% if checkins.number == num %}
-                <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-                {% elif num > checkins.number|add:'-3' and num < checkins.number|add:'3' %}
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
-                </li>
-                {% endif %}
-            {% endfor %}
-            
-            {% if checkins.has_next %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ checkins.next_page_number }}">下一页</a>
-            </li>
-            {% endif %}
-        </ul>
-    </nav>
-    {% endif %}
-    
-    {% else %}
-    <div class="text-center py-5">
-        <i class="fas fa-camera fa-4x text-muted mb-3"></i>
-        <h4>还没有打卡记录</h4>
-        <p class="text-muted">快去参与活动并打卡吧！</p>
-        <a href="{% url 'activities:list' %}" class="btn btn-primary">
-            <i class="fas fa-calendar-alt me-2"></i>浏览活动
-        </a>
-    </div>
-    {% endif %}
 </div>
+
+<div class="tip-bar">
+    <strong>说明：</strong>
+    若打卡被拒绝，只要仍在当天，你可以修改内容后重新提交该活动打卡。
+</div>
+
+{% if checkins %}
+<div class="record-list">
+    {% for checkin in checkins %}
+    <div class="record-card">
+        <div class="record-main">
+            <div class="record-top">
+                <div>
+                    <div class="record-title">📍 {{ checkin.activity.title }}</div>
+                    <div class="record-meta">
+                        <span>打卡日期：{{ checkin.check_in_date|date:"Y-m-d" }}</span>
+                        <span>提交时间：{{ checkin.created_at|date:"Y-m-d H:i" }}</span>
+                        {% if checkin.location_name %}
+                        <span>位置：{{ checkin.location_name }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if checkin.status == 'approved' %}
+                    <span class="status-badge status-approved">审核通过</span>
+                {% elif checkin.status == 'pending' %}
+                    <span class="status-badge status-pending">待审核</span>
+                {% elif checkin.status == 'rejected' %}
+                    <span class="status-badge status-rejected">审核未通过</span>
+                {% elif checkin.status == 'revoked' %}
+                    <span class="status-badge status-revoked">已撤销</span>
+                {% else %}
+                    <span class="status-badge status-revoked">{{ checkin.get_status_display }}</span>
+                {% endif %}
+            </div>
+
+            <div class="record-grid">
+                <div class="info-box">
+                    <div class="info-label">获得积分</div>
+                    <div class="info-value">{{ checkin.points_earned|default:"0" }} 分</div>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-label">审核结果</div>
+                    <div class="info-value">
+                        {% if checkin.status == 'approved' %}
+                            已通过
+                        {% elif checkin.status == 'pending' %}
+                            等待审核
+                        {% elif checkin.status == 'rejected' %}
+                            未通过
+                        {% elif checkin.status == 'revoked' %}
+                            已撤销
+                        {% else %}
+                            {{ checkin.get_status_display }}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <div class="info-label">照片数量</div>
+                    <div class="info-value">{{ checkin.photos.count }} 张</div>
+                </div>
+            </div>
+
+            {% if checkin.remark %}
+            <div class="note-box note-approved" style="background:#f8fafc; border-color:#e5e7eb; color:#374151;">
+                <p><strong>打卡备注：</strong>{{ checkin.remark }}</p>
+            </div>
+            {% endif %}
+
+            {% if checkin.status == 'approved' %}
+            <div class="note-box note-approved">
+                <p>
+                    <strong>审核说明：</strong>
+                    {% if checkin.review_note %}
+                        {{ checkin.review_note }}
+                    {% else %}
+                        打卡审核已通过，积分已发放。
+                    {% endif %}
+                </p>
+            </div>
+            {% elif checkin.status == 'pending' %}
+            <div class="note-box note-pending">
+                <p>
+                    <strong>当前状态：</strong>
+                    该打卡正在等待活动管理员审核，请耐心等待。
+                </p>
+            </div>
+            {% elif checkin.status == 'rejected' %}
+            <div class="note-box note-rejected">
+                <p>
+                    <strong>拒绝原因：</strong>
+                    {% if checkin.review_note %}
+                        {{ checkin.review_note }}
+                    {% else %}
+                        管理员未填写拒绝原因。
+                    {% endif %}
+                </p>
+            </div>
+            <div class="record-actions">
+                <a href="{% url 'checkins:checkin' %}" class="btn btn-danger">
+                    重新打卡
+                </a>
+            </div>
+            {% elif checkin.status == 'revoked' %}
+            <div class="note-box note-revoked">
+                <p>
+                    <strong>说明：</strong>
+                    该打卡已被撤销，可以重新提交。
+                    {% if checkin.review_note %}
+                        原因：{{ checkin.review_note }}
+                    {% endif %}
+                </p>
+            </div>
+            <div class="record-actions">
+                <a href="{% url 'checkins:checkin' %}" class="btn btn-secondary">
+                    重新打卡
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="record-footer">
+            记录编号：#{{ checkin.id }}　
+            {% if checkin.status == 'approved' %}
+                本次打卡已完成并计入活动记录。
+            {% elif checkin.status == 'pending' %}
+                提交成功，等待审核后才会最终确认。
+            {% elif checkin.status == 'rejected' %}
+                本次打卡未通过，不计入有效完成记录。
+            {% elif checkin.status == 'revoked' %}
+                本次打卡已撤销，不计入有效完成记录。
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if checkins.has_other_pages %}
+<div class="pagination-wrap">
+    <div class="pagination">
+        {% if checkins.has_previous %}
+            <a class="page-link-custom" href="?page=1">首页</a>
+            <a class="page-link-custom" href="?page={{ checkins.previous_page_number }}">上一页</a>
+        {% endif %}
+
+        <span class="page-link-custom active">
+            {{ checkins.number }} / {{ checkins.paginator.num_pages }}
+        </span>
+
+        {% if checkins.has_next %}
+            <a class="page-link-custom" href="?page={{ checkins.next_page_number }}">下一页</a>
+            <a class="page-link-custom" href="?page={{ checkins.paginator.num_pages }}">末页</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-card">
+    <div class="empty-icon">📭</div>
+    <h3 class="mb-3">还没有打卡记录</h3>
+    <p class="text-muted mb-4">参加活动并完成打卡后，这里会显示你的审核状态和积分结果。</p>
+    <a href="{% url 'checkins:checkin' %}" class="btn btn-primary">去打卡</a>
+</div>
+{% endif %}
 {% endblock %}

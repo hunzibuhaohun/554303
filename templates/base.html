@@ -93,28 +93,30 @@
             border-radius: 20px;
             font-weight: bold;
         }
+
         .notification-link {
-                position: relative;
-                display: inline-flex;
-                align-items: center;
-            }
-            
-            .notification-badge {
-                position: absolute;
-                top: 4px;
-                right: -2px;
-                min-width: 18px;
-                height: 18px;
-                padding: 0 5px;
-                border-radius: 999px;
-                font-size: 11px;
-                line-height: 18px;
-                text-align: center;
-                background: #EF4444;
-                color: #fff;
-                font-weight: 700;
-                display: none;
-            }
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: 4px;
+            right: -2px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 999px;
+            font-size: 11px;
+            line-height: 18px;
+            text-align: center;
+            background: #EF4444;
+            color: #fff;
+            font-weight: 700;
+            display: none;
+        }
+
         {% block extra_css %}{% endblock %}
     </style>
 </head>
@@ -135,11 +137,13 @@
                             <i class="fas fa-home me-1"></i>首页
                         </a>
                     </li>
+
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'activities:list' %}">
                             <i class="fas fa-calendar-alt me-1"></i>活动广场
                         </a>
                     </li>
+
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'social:moments' %}">
                             <i class="fas fa-comments me-1"></i>动态
@@ -154,66 +158,130 @@
                             </a>
                         </li>
                         {% endif %}
+
+                        {% if user.role == 'admin' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'activities:application_list' %}">
+                                <i class="fas fa-clipboard-check me-1"></i>申请审核
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'users:admin_user_list' %}">
+                                <i class="fas fa-users-cog me-1"></i>用户管理
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% if user.role == 'student' %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'activities:application_submit' %}">
+                                <i class="fas fa-file-signature me-1"></i>申请活动
+                            </a>
+                        </li>
+                        {% endif %}
                     {% endif %}
                 </ul>
 
                 <ul class="navbar-nav">
-    {% if user.is_authenticated %}
-    <li class="nav-item me-2">
-        <a class="nav-link notification-link" href="{% url 'social:messages' %}" title="消息中心">
-            <i class="fas fa-bell fa-lg"></i>
-            <span id="navbarUnreadBadge" class="notification-badge">0</span>
-        </a>
-    </li>
+                    {% if user.is_authenticated %}
+                    <li class="nav-item me-2">
+                        <a class="nav-link notification-link" href="{% url 'social:messages' %}" title="消息中心">
+                            <i class="fas fa-bell fa-lg"></i>
+                            <span id="navbarUnreadBadge" class="notification-badge">0</span>
+                        </a>
+                    </li>
 
-    <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
-            <img src="{% if user.avatar %}{{ user.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}"
-                 class="avatar me-2" alt="头像">
-            <span>{{ user.username }}</span>
-        </a>
-        <ul class="dropdown-menu dropdown-menu-end">
-            <li class="dropdown-item-text">
-                <span class="points-badge">
-                    <i class="fas fa-coins me-1"></i>{{ user.points }} 积分
-                </span>
-            </li>
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{% url 'users:profile' %}">
-                <i class="fas fa-user me-2"></i>个人中心
-            </a></li>
-            <li><a class="dropdown-item" href="{% url 'activities:my' %}">
-                <i class="fas fa-calendar-check me-2"></i>我的活动
-            </a></li>
-            <li><a class="dropdown-item" href="{% url 'checkins:history' %}">
-                <i class="fas fa-history me-2"></i>打卡记录
-            </a></li>
-            <li><a class="dropdown-item" href="{% url 'social:messages' %}">
-                <i class="fas fa-bell me-2"></i>消息中心
-            </a></li>
-            <li><a class="dropdown-item" href="{% url 'users:settings' %}">
-                <i class="fas fa-cog me-2"></i>设置
-            </a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li>
-                <form method="post" action="{% url 'users:logout' %}" class="m-0">
-                    {% csrf_token %}
-                    <button type="submit" class="dropdown-item text-danger">
-                        <i class="fas fa-sign-out-alt me-2"></i>退出登录
-                    </button>
-                </form>
-            </li>
-        </ul>
-    </li>
-    {% else %}
-    <li class="nav-item">
-        <a class="nav-link" href="{% url 'users:login' %}">登录</a>
-    </li>
-    <li class="nav-item">
-        <a class="btn btn-primary ms-2" href="{% url 'users:register' %}">注册</a>
-    </li>
-    {% endif %}
-</ul>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" data-bs-toggle="dropdown">
+                            <img src="{% if user.avatar %}{{ user.avatar.url }}{% else %}{% static 'images/default-avatar.png' %}{% endif %}"
+                                 class="avatar me-2" alt="头像">
+                            <span>{{ user.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li class="dropdown-item-text">
+                                <span class="points-badge">
+                                    <i class="fas fa-coins me-1"></i>{{ user.points }} 积分
+                                </span>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+
+                            <li>
+                                <a class="dropdown-item" href="{% url 'users:profile' %}">
+                                    <i class="fas fa-user me-2"></i>个人中心
+                                </a>
+                            </li>
+
+                            <li>
+                                <a class="dropdown-item" href="{% url 'activities:my' %}">
+                                    <i class="fas fa-calendar-check me-2"></i>我的活动
+                                </a>
+                            </li>
+
+                            <li>
+                                <a class="dropdown-item" href="{% url 'checkins:history' %}">
+                                    <i class="fas fa-history me-2"></i>打卡记录
+                                </a>
+                            </li>
+
+                            <li>
+                                <a class="dropdown-item" href="{% url 'social:messages' %}">
+                                    <i class="fas fa-bell me-2"></i>消息中心
+                                </a>
+                            </li>
+
+                            {% if user.role == 'admin' %}
+                            <li>
+                                <a class="dropdown-item" href="{% url 'activities:application_list' %}">
+                                    <i class="fas fa-clipboard-check me-2"></i>活动申请审核
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'users:admin_user_list' %}">
+                                    <i class="fas fa-users-cog me-2"></i>用户管理
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="/admin/activities/activityapplication/">
+                                    <i class="fas fa-shield-alt me-2"></i>Django后台申请表
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            {% if user.role == 'student' %}
+                            <li>
+                                <a class="dropdown-item" href="{% url 'activities:application_submit' %}">
+                                    <i class="fas fa-file-signature me-2"></i>提交活动申请
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li>
+                                <a class="dropdown-item" href="{% url 'users:settings' %}">
+                                    <i class="fas fa-cog me-2"></i>设置
+                                </a>
+                            </li>
+
+                            <li><hr class="dropdown-divider"></li>
+
+                            <li>
+                                <form method="post" action="{% url 'users:logout' %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <i class="fas fa-sign-out-alt me-2"></i>退出登录
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'users:login' %}">登录</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="btn btn-primary ms-2" href="{% url 'users:register' %}">注册</a>
+                    </li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
     </nav>
@@ -246,7 +314,7 @@
                     </div>
                     {% endfor %}
                 </div>
-                {% endif %}
+            {% endif %}
 
             {% block content %}{% endblock %}
         </div>
@@ -272,6 +340,10 @@
                         {% if user.is_authenticated %}
                             {% if user.role == 'teacher' or user.role == 'admin' %}
                             <li><a href="{% url 'dashboard:statistics' %}" class="text-decoration-none">数据中心</a></li>
+                            {% endif %}
+                            {% if user.role == 'admin' %}
+                            <li><a href="{% url 'activities:application_list' %}" class="text-decoration-none">申请审核</a></li>
+                            <li><a href="{% url 'users:admin_user_list' %}" class="text-decoration-none">用户管理</a></li>
                             {% endif %}
                         {% endif %}
                     </ul>
@@ -322,44 +394,43 @@
             });
         });
     </script>
-    
-        {% if user.is_authenticated %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const unreadBadge = document.getElementById('navbarUnreadBadge');
-    if (!unreadBadge) return;
 
-    function refreshUnreadCount() {
-        fetch("{% url 'social:unread_count' %}", {
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(function (response) {
-            return response.json();
-        })
-        .then(function (data) {
-            const count = Number(data.count || 0);
-            if (count > 0) {
-                unreadBadge.textContent = count > 99 ? '99+' : count;
-                unreadBadge.style.display = 'inline-block';
-            } else {
-                unreadBadge.style.display = 'none';
-            }
-        })
-        .catch(function (error) {
-            console.error('获取未读消息数失败:', error);
-        });
-    }
+    {% if user.is_authenticated %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const unreadBadge = document.getElementById('navbarUnreadBadge');
+        if (!unreadBadge) return;
 
-    refreshUnreadCount();
+        function refreshUnreadCount() {
+            fetch("{% url 'social:unread_count' %}", {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (data) {
+                const count = Number(data.count || 0);
+                if (count > 0) {
+                    unreadBadge.textContent = count > 99 ? '99+' : count;
+                    unreadBadge.style.display = 'inline-block';
+                } else {
+                    unreadBadge.style.display = 'none';
+                }
+            })
+            .catch(function (error) {
+                console.error('获取未读消息数失败:', error);
+            });
+        }
 
-    // 每 30 秒刷新一次
-    setInterval(refreshUnreadCount, 30000);
-});
-</script>
-{% endif %}
-    
+        refreshUnreadCount();
+
+        setInterval(refreshUnreadCount, 30000);
+    });
+    </script>
+    {% endif %}
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>
